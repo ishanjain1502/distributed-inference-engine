@@ -10,9 +10,10 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { InferRequest, Worker, TokenMessage, DEFAULT_STREAM_CONFIG } from './types';
-import { selectWorker, RequestMeta, WorkerSelectionError } from './scheduler';
+import { selectWorker, RequestMeta, WorkerSelectionError, canAcceptRequest } from './scheduler';
 import { healthTable } from './healthTable';
 import { streamMetrics } from './streamMetrics';
+import { sessionTracker } from './sessionTracker';
 
 const MAX_PREFILL_RETRIES = 2;
 const STREAM_CONFIG = DEFAULT_STREAM_CONFIG;
@@ -51,6 +52,33 @@ router.post('/', async (req: Request, res: Response) => {
 
   if (!body.prompt || !body.model || !body.max_tokens) {
     res.status(400).json({ error: 'Missing required fields: prompt, model, max_tokens' });
+    return;
+  }
+
+  // Estimate KV cache for this request (for admission control)
+  const estimatedKvBytes = body.prompt.length * 512; // Same estimate as worker
+
+  // Early rejection check - fail fast if system is full
+  const allWorkers = healthTable.getWorkersForScheduler();
+  const admissionCheck = canAcceptRequest(allWorkers, estimatedKvBytes);
+
+  if (!admissionCheck.canAccept) {
+    // Type narrowing: admissionCheck is { canAccept: false; reason: string }
+    const rejection = admissionCheck as { canAccept: false; reason: string };
+    console.warn(
+      JSON.stringify({
+        event: 'infer.early_reject',
+        request_id: requestId,
+        reason: rejection.reason,
+        prompt_length: body.prompt.length,
+        estimated_kv_bytes: estimatedKvBytes,
+      })
+    );
+    res.status(503).json({
+      error: 'System at capacity',
+      reason: rejection.reason,
+      request_id: requestId,
+    });
     return;
   }
 
@@ -104,7 +132,8 @@ router.post('/', async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  // Start tracking this session
+  // Track session for capacity (O(1) updates) and observability
+  sessionTracker.sessionStart(sessionId, selectedWorker.id, estimatedKvBytes);
   streamMetrics.sessionStart(sessionId, selectedWorker.id);
 
   try {
@@ -120,6 +149,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (!decodeRes.ok || !decodeRes.body) {
       res.write(`data: ${JSON.stringify({ error: 'Worker decode failed' })}\n\n`);
       res.end();
+      sessionTracker.sessionEnd(sessionId);
       streamMetrics.sessionEnd(sessionId, 'worker_error');
       return;
     }
@@ -129,6 +159,7 @@ router.post('/', async (req: Request, res: Response) => {
   } catch (err) {
     res.write(`data: ${JSON.stringify({ error: 'Worker connection lost during decode' })}\n\n`);
     res.end();
+    sessionTracker.sessionEnd(sessionId);
     streamMetrics.sessionEnd(sessionId, 'worker_error');
   }
 });
@@ -278,6 +309,7 @@ async function streamTokensToClient(
   } finally {
     reader.releaseLock();
     res.end();
+    sessionTracker.sessionEnd(sessionId);
     streamMetrics.sessionEnd(sessionId, terminationReason);
   }
 }

@@ -6,8 +6,16 @@
 //
 // Metrics tracked:
 // - scheduler.request.rejected.count
+//
+// Exposes:
+// - canAcceptRequest: Pre-check if scheduling is possible
 
 import { Worker } from './types';
+import {
+  canAcceptRequest as checkSystemCapacity,
+  recordAdmissionDecision,
+  getCapacityConfig,
+} from './capacity';
 
 export interface RequestMeta {
   model: string;
@@ -24,6 +32,14 @@ const DEFAULT_CONFIG: SchedulerConfig = {
   maxActiveSessions: 100,
   maxKvCacheBytes: 8 * 1024 * 1024 * 1024,
 };
+
+export function getSchedulerConfig(): SchedulerConfig {
+  const capacity = getCapacityConfig();
+  return {
+    maxActiveSessions: capacity.maxSessionsPerWorker,
+    maxKvCacheBytes: capacity.maxKvCacheBytesPerWorker,
+  };
+}
 
 export interface SchedulerMetrics {
   rejectedNoWorkers: number;
@@ -47,9 +63,52 @@ export function resetSchedulerMetrics(): void {
   schedulerMetrics.totalSelections = 0;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Worker Scoring
-// ─────────────────────────────────────────────────────────────────────────────
+function isWithinCapacity(worker: Worker, config: SchedulerConfig): boolean {
+  if (!worker.health) return false;
+  return (
+    worker.health.active_sessions < config.maxActiveSessions &&
+    worker.health.kv_cache_bytes < config.maxKvCacheBytes
+  );
+}
+
+export type CanAcceptResult =
+  | { canAccept: true }
+  | { canAccept: false; reason: string };
+
+/**
+ * Check if the scheduler can accept a new request.
+ * This is a fast early-rejection check before attempting worker selection.
+ *
+ * @param workers - Available workers from health table
+ * @param estimatedKvBytes - Optional estimated KV cache for this request
+ * @returns Whether the request can be accepted and reason if not
+ */
+export function canAcceptRequest(
+  workers: Worker[],
+  estimatedKvBytes: number = 0
+): CanAcceptResult {
+  
+  const systemCheck = checkSystemCapacity(estimatedKvBytes);
+  recordAdmissionDecision(systemCheck);
+
+  if (!systemCheck.canAccept) {
+    return { canAccept: false, reason: systemCheck.reason! };
+  }
+
+  const alive = workers.filter((w) => w.health?.alive);
+  if (alive.length === 0) {
+    return { canAccept: false, reason: 'no_healthy_workers' };
+  }
+
+  const config = getSchedulerConfig();
+  const available = alive.filter((w) => isWithinCapacity(w, config));
+
+  if (available.length === 0) {
+    return { canAccept: false, reason: 'all_workers_at_capacity' };
+  }
+
+  return { canAccept: true };
+}
 
 interface WorkerScore {
   workerId: string;
@@ -80,17 +139,6 @@ function scoreWorker(worker: Worker, config: SchedulerConfig): WorkerScore {
     kvCapacityPct,
     score,
   };
-}
-
-/**
- * Check if worker is within capacity thresholds.
- */
-function isWithinCapacity(worker: Worker, config: SchedulerConfig): boolean {
-  if (!worker.health) return false;
-  return (
-    worker.health.active_sessions < config.maxActiveSessions &&
-    worker.health.kv_cache_bytes < config.maxKvCacheBytes
-  );
 }
 
 export type SelectionRejectionReason = 'no_healthy_workers' | 'all_at_capacity';

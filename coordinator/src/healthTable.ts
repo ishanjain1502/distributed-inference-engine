@@ -29,17 +29,43 @@ const CONFIG = {
 };
 
 /**
+ * Pre-computed aggregates for O(1) capacity checks.
+ * Updated on heartbeat ingestion, not on every request.
+ */
+export interface ClusterAggregates {
+  totalSessions: number;
+  totalKvCacheBytes: number;
+  aliveWorkerCount: number;
+}
+
+/**
  * HealthTable - Single source of truth for worker health
  * 
  * Used by scheduler to get available workers.
  * Updated by heartbeat ingestion.
+ * 
+ * Maintains pre-computed aggregates for O(1) admission control.
  */
 class HealthTable {
   private workers = new Map<string, WorkerEntry>();
   private cleanupTimer: NodeJS.Timeout | null = null;
 
+  // Pre-computed aggregates - updated on heartbeat, O(1) access
+  private aggregates: ClusterAggregates = {
+    totalSessions: 0,
+    totalKvCacheBytes: 0,
+    aliveWorkerCount: 0,
+  };
+
   constructor() {
     this.startCleanup();
+  }
+
+  /**
+   * Get pre-computed cluster aggregates - O(1)
+   */
+  getAggregates(): Readonly<ClusterAggregates> {
+    return { ...this.aggregates };
   }
 
   /**
@@ -61,7 +87,29 @@ class HealthTable {
   }
 
   /**
-   * Ingest a heartbeat from a worker
+   * Recompute aggregates from current worker state.
+   * Called after any mutation to workers map.
+   */
+  private recomputeAggregates(nowTs: number = Date.now()): void {
+    let totalSessions = 0;
+    let totalKvCacheBytes = 0;
+    let aliveWorkerCount = 0;
+
+    for (const entry of this.workers.values()) {
+      const status = this.computeStatus(entry.lastHeartbeat, nowTs);
+      if (status === WorkerStatus.ALIVE) {
+        aliveWorkerCount++;
+        totalSessions += entry.health.active_sessions;
+        totalKvCacheBytes += entry.health.kv_cache_bytes;
+      }
+    }
+
+    this.aggregates = { totalSessions, totalKvCacheBytes, aliveWorkerCount };
+  }
+
+  /**
+   * Ingest a heartbeat from a worker.
+   * Updates pre-computed aggregates for O(1) capacity checks.
    */
   ingest(
     payload: HeartbeatPayload,
@@ -82,6 +130,9 @@ class HealthTable {
       lastHeartbeat: nowTs,
       status: WorkerStatus.ALIVE,
     });
+
+    // Recompute aggregates after update
+    this.recomputeAggregates(nowTs);
 
     return { success: true };
   }
@@ -141,7 +192,8 @@ class HealthTable {
   }
 
   /**
-   * Remove dead workers from the table
+   * Remove dead workers from the table.
+   * Recomputes aggregates after removal.
    */
   cleanup(nowTs: number = Date.now()): number {
     let removed = 0;
@@ -151,6 +203,10 @@ class HealthTable {
         this.workers.delete(id);
         removed++;
       }
+    }
+
+    if (removed > 0) {
+      this.recomputeAggregates(nowTs);
     }
 
     return removed;
@@ -183,6 +239,7 @@ class HealthTable {
    */
   clear(): void {
     this.workers.clear();
+    this.aggregates = { totalSessions: 0, totalKvCacheBytes: 0, aliveWorkerCount: 0 };
   }
 
   /**

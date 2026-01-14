@@ -14,7 +14,7 @@ use tokio_stream::StreamExt;
 use tracing::{debug, info, warn};
 
 use crate::metrics::metrics;
-use crate::state::{Session, Sessions};
+use crate::state::{check_capacity, Session, Sessions};
 use crate::stream::TokenEmitter;
 
 #[derive(Deserialize)]
@@ -30,14 +30,49 @@ pub struct PrefillResponse {
     pub status: &'static str,
 }
 
+/// Error response for capacity exceeded
+#[derive(Serialize)]
+pub struct CapacityExceededResponse {
+    pub error: &'static str,
+    pub reason: String,
+}
+
+/// POST /prefill - Prefill phase of inference
+///
+/// Enforces capacity limits:
+/// - Max sessions per worker
+/// - Max KV cache per session
+/// - Max total KV cache
+///
+/// Fails fast with 503 if limits exceeded.
 pub async fn prefill(
     State(sessions): State<Sessions>,
     Json(req): Json<PrefillRequest>,
-) -> Result<Json<PrefillResponse>, StatusCode> {
+) -> Result<Json<PrefillResponse>, (StatusCode, Json<CapacityExceededResponse>)> {
     let prefill_start = Instant::now();
     let session_id = req.session_id.clone();
 
     let kv_cache_bytes = (req.prompt.len() as u64) * 512;
+
+    // Check capacity BEFORE creating session - fail fast
+    {
+        let sessions_read = sessions.read().await;
+        if let Err(capacity_err) = check_capacity(&sessions_read, kv_cache_bytes) {
+            warn!(
+                session_id = %session_id,
+                reason = %capacity_err,
+                kv_cache_bytes = kv_cache_bytes,
+                "prefill.capacity_exceeded"
+            );
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(CapacityExceededResponse {
+                    error: "Capacity exceeded",
+                    reason: capacity_err.to_string(),
+                }),
+            ));
+        }
+    }
 
     let session = Session {
         prompt: req.prompt,
@@ -47,8 +82,26 @@ pub async fn prefill(
         last_activity: Instant::now(),
     };
 
+    // Insert session and update metrics
     {
         let mut sessions_write = sessions.write().await;
+
+        // Double-check capacity with write lock (race condition protection)
+        if let Err(capacity_err) = check_capacity(&sessions_write, kv_cache_bytes) {
+            warn!(
+                session_id = %session_id,
+                reason = %capacity_err,
+                "prefill.capacity_exceeded_race"
+            );
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(CapacityExceededResponse {
+                    error: "Capacity exceeded",
+                    reason: capacity_err.to_string(),
+                }),
+            ));
+        }
+
         sessions_write.insert(session_id.clone(), session);
 
         let total_kv: u64 = sessions_write.values().map(|s| s.kv_cache_bytes).sum();
