@@ -18,3 +18,7 @@ some hard wired prinicples that cannot be broken, and if they are to be broken, 
 8. when worker fails, all requests on the workers' execution queue also get failed
 9. Health Monitor only has READ APIs, it cannot mutate anything
 10. Once decode starts on a worker, all future decode steps for that session must happen on the same worker.
+11. Worker never blocks on client speed,
+    If it does, one slow client can stall GPU/CPU.
+    So: Worker produces tokens at model speed, not network speed.
+12. Worker decode throughput must never depend on client consumption speed.

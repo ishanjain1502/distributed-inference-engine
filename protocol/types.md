@@ -18,14 +18,16 @@ Represents an active inference session on a worker.
 
 ---
 
-## DecodeChunk
+## TokenMessage
 
-Single token in the streaming response.
+Single token in the streaming response with sequence number.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `token` | string | Generated token |
-| `finished` | boolean | True if this is the final token |
+| `seq` | number | Sequence number (0-indexed) for gap/retry detection |
+
+**Note:** Sequence numbers are monotonically increasing per decode session. The coordinator uses them to detect gaps or retries in the token stream.
 
 ---
 

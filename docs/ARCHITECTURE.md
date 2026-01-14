@@ -108,3 +108,80 @@ Asses health of different components in the system , primarily workers
 12. output words are streamed back to coordinator
 13. sessions ends -> cache expires
 
+### Streaming Pipeline
+Worker
+  └─ decode loop
+      └─ token stream
+          └─ Coordinator
+              └─ client stream
+
+### Some Important Rules
+Coordinator is the pressure valve
+Coordinator:
+    buffers tokens
+    applies backpressure
+    drops or terminates sessions if needed
+    Worker never manages client flow.
+
+
+Backpressure is explicit, not implicit
+If buffers fill:
+    something must stop
+    or something must die
+    “Unlimited buffering” is not a strategy.
+
+BUFFERING STRATEGY
+    Worker → Coordinator buffer
+    Small (e.g. 8–32 tokens)
+    If full:
+        worker pauses decode OR
+        worker drops session
+        For this system: Pause decode
+
+
+
+## PART 5 — TIMEOUTS (TIME KILLS SYSTEMS)
+**Three essential timeouts must be enforced:**
+---
+### Worker Decode Idle Timeout
+- **Condition:**  
+  If a worker cannot send tokens for _X_ seconds (decode is stalled).
+- **Action:**  
+  - Assume the session is stuck.
+  - Terminate the session.
+
+---
+### Coordinator Write Timeout
+- **Condition:**  
+  If the client does not accept data for _Y_ seconds (e.g. slow or unreachable client).
+- **Action:**  
+  - Close the client connection.
+  - Notify the worker to stop decoding (or allow TTL/other mechanism to clean up the session).
+
+---
+### End-to-End Session Timeout
+- **Condition:**  
+  A session exceeds a pre-defined hard cap on total lifetime.
+- **Action:**  
+  - Terminate the session.
+  - Infinite sessions are disallowed.
+
+---
+
+FAILURE SCENARIOS
+
+Case 1: Client is slow
+    Coordinator buffer fills
+    Coordinator stops reading worker stream
+    Worker pauses decode
+    If persists → session terminated
+
+Case 2: Client disconnects
+    Coordinator detects broken stream
+    Session marked cancelled
+    Worker stops decode or TTL cleans up
+
+Case 3: Network hiccup between worker & coordinator
+    Worker send blocks or errors
+    Decode paused
+    If timeout → session ends

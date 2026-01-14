@@ -1,5 +1,3 @@
-// Worker heartbeat - periodic health reporting to coordinator
-
 use std::time::Duration;
 
 use reqwest::Client;
@@ -8,12 +6,11 @@ use tracing::{debug, error, warn};
 
 use crate::state::Sessions;
 
-/// Heartbeat payload sent to coordinator
 #[derive(Serialize)]
 struct HeartbeatPayload {
     worker_id: String,
-    worker_url: String, // Worker's reachable URL for coordinator to route requests
-    timestamp: u64,     // Unix ms
+    worker_url: String,
+    timestamp: u64,
     health: WorkerHealth,
 }
 
@@ -24,10 +21,9 @@ struct WorkerHealth {
     kv_cache_bytes: u64,
 }
 
-/// Configuration for heartbeat sender
 pub struct HeartbeatConfig {
     pub worker_id: String,
-    pub worker_url: String,      // This worker's reachable URL
+    pub worker_url: String,
     pub coordinator_url: String,
     pub interval: Duration,
 }
@@ -39,13 +35,12 @@ impl Default for HeartbeatConfig {
             worker_url: std::env::var("WORKER_URL")
                 .unwrap_or_else(|_| "http://localhost:3001".into()),
             coordinator_url: std::env::var("COORDINATOR_URL")
-                .unwrap_or_else(|_| "http://localhost:3000".into()),
+                .unwrap_or_else(|_| "http://localhost:1337".into()),
             interval: Duration::from_secs(10),
         }
     }
 }
 
-/// Gather current health stats from sessions
 async fn gather_health(sessions: &Sessions) -> WorkerHealth {
     let sessions_read = sessions.read().await;
     let active_sessions = sessions_read.len();
@@ -58,10 +53,9 @@ async fn gather_health(sessions: &Sessions) -> WorkerHealth {
     }
 }
 
-/// Run heartbeat loop - call this as a spawned background task
 pub async fn run_heartbeat_loop(sessions: Sessions, config: HeartbeatConfig) {
     let client = Client::new();
-    let heartbeat_url = format!("{}/health/heartbeat", config.coordinator_url);
+    let heartbeat_url = format!("{}/coordinator/health/heartbeat", config.coordinator_url);
 
     debug!(
         worker_id = %config.worker_id,

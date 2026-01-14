@@ -1,7 +1,9 @@
 mod cache;
 mod heartbeat;
 mod http;
+mod metrics;
 mod state;
+mod stream;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,7 +21,6 @@ async fn main() {
 
     let sessions: Sessions = Arc::new(RwLock::new(HashMap::new()));
 
-    // Spawn heartbeat background task
     let heartbeat_sessions = sessions.clone();
     let heartbeat_config = HeartbeatConfig::default();
     info!(
@@ -33,9 +34,10 @@ async fn main() {
         heartbeat_config,
     ));
 
-    // Spawn session eviction background task
     let eviction_sessions = sessions.clone();
     tokio::spawn(state::run_eviction_loop(eviction_sessions));
+
+    tokio::spawn(metrics::run_metrics_loop());
 
     let app = Router::new()
         .route("/worker/prefill", axum::routing::post(http::prefill))

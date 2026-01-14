@@ -1,37 +1,31 @@
-// HealthTable - Centralized worker health tracking
-//
-// Soft state: rebuilt from heartbeats after coordinator restart
-// No persistence needed - workers re-announce themselves
-
 import { Worker, WorkerHealth } from './types';
 
 export enum WorkerStatus {
-  ALIVE = 'alive',     // Heartbeat within timeout
-  STALE = 'stale',     // No recent heartbeat, may be recovering
-  DEAD = 'dead',       // Exceeded timeout, considered unavailable
+  ALIVE = 'alive',
+  STALE = 'stale',
+  DEAD = 'dead',
 }
 
 export interface WorkerEntry {
   id: string;
   url: string;
   health: WorkerHealth;
-  lastHeartbeat: number;  // Unix ms
+  lastHeartbeat: number;
   status: WorkerStatus;
 }
 
 export interface HeartbeatPayload {
   worker_id: string;
-  worker_url: string;     // Worker's reachable URL
-  timestamp: number;      // Unix ms
+  worker_url: string;
+  timestamp: number;
   health: WorkerHealth;
 }
 
-// Configuration
 const CONFIG = {
-  HEARTBEAT_STALENESS_MS: 30_000,  // Reject heartbeats older than 30s
-  STALE_THRESHOLD_MS: 30_000,      // Mark stale after 30s without heartbeat
-  DEAD_THRESHOLD_MS: 60_000,       // Mark dead after 60s without heartbeat
-  CLEANUP_INTERVAL_MS: 60_000,     // Run cleanup every 60s
+  HEARTBEAT_STALENESS_MS: 30_000,
+  STALE_THRESHOLD_MS: 30_000,
+  DEAD_THRESHOLD_MS: 60_000,
+  CLEANUP_INTERVAL_MS: 60_000,
 };
 
 /**
@@ -53,7 +47,6 @@ class HealthTable {
    */
   private isValidTimestamp(heartbeatTs: number, nowTs: number): boolean {
     const drift = nowTs - heartbeatTs;
-    // Reject if too old or from the future (clock skew > 5s)
     return drift >= -5000 && drift <= CONFIG.HEARTBEAT_STALENESS_MS;
   }
 
@@ -74,17 +67,14 @@ class HealthTable {
     payload: HeartbeatPayload,
     nowTs: number = Date.now()
   ): { success: boolean; error?: string } {
-    // Validate timestamp
     if (!this.isValidTimestamp(payload.timestamp, nowTs)) {
       return { success: false, error: 'Stale or invalid timestamp' };
     }
 
-    // Validate required fields
     if (!payload.worker_id || !payload.worker_url || !payload.health) {
       return { success: false, error: 'Missing required fields' };
     }
 
-    // Update or insert worker entry
     this.workers.set(payload.worker_id, {
       id: payload.worker_id,
       url: payload.worker_url,
@@ -105,8 +95,7 @@ class HealthTable {
 
     for (const entry of this.workers.values()) {
       const status = this.computeStatus(entry.lastHeartbeat, nowTs);
-      
-      // Only include alive workers for scheduling
+
       if (status === WorkerStatus.ALIVE) {
         result.push({
           id: entry.id,
@@ -204,6 +193,4 @@ class HealthTable {
   }
 }
 
-// Singleton instance
 export const healthTable = new HealthTable();
-
