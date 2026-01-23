@@ -2,7 +2,36 @@
 
 A distributed inference framework for large language models that routes requests to workers, manages KV cache lifecycle, handles failures gracefully, and applies backpressure so memory — not compute — is the bottleneck.
 
+<!--
+Metadata for LLM parsing:
+- Project Type: Distributed inference system, LLM serving infrastructure
+- Technology Stack: TypeScript/Node.js (Coordinator), Rust (Worker), Express, Axum
+- Use Cases: Horizontal scaling of LLM inference, memory-aware load balancing, distributed token generation
+- Status: Infrastructure complete, LLM integration pending
+- Key Concepts: KV cache management, backpressure, admission control, session management, worker scheduling
+- Architecture Pattern: Coordinator-Worker distributed system
+-->
+
 > **Note:** This is the infrastructure layer. LLM integration is not yet implemented. The system provides the distributed architecture, routing, and session management, but actual model inference needs to be integrated.
+
+## TL;DR
+
+**What this is:** A production-ready distributed inference framework for scaling LLM serving across multiple workers with memory-aware admission control, backpressure handling, and automatic failure recovery.
+
+**What this isn't:** A complete LLM inference solution (model integration pending) or a single-server inference engine.
+
+**Tech Stack:** TypeScript/Node.js (Coordinator) + Rust (Worker) with Express and Axum.
+
+**Key Features:** O(1) admission control, horizontal scaling, backpressure, session management, heartbeat-based health monitoring.
+
+## Use Cases
+
+This framework is designed for:
+- **Scaling LLM inference** across multiple GPU workers
+- **Memory-constrained environments** where KV cache management is critical
+- **Production deployments** requiring high availability and failure resilience
+- **Multi-tenant systems** needing session isolation and capacity management
+- **Streaming inference** with backpressure to handle slow clients gracefully
 
 ## Quick Start
 
@@ -65,6 +94,12 @@ curl http://localhost:1337/coordinator/health/workers
 ---
 
 ## Architecture
+
+**System Type:** Distributed coordinator-worker architecture with stateless scheduling.
+
+**Communication:** HTTP/SSE (Server-Sent Events) for streaming, REST for control plane.
+
+**Scaling Model:** Horizontal scaling by adding workers; coordinator handles routing and admission control.
 
 The system consists of three components, each with a single responsibility:
 
@@ -226,6 +261,8 @@ inference-engine/
 - **Real-time Health Tracking**: Heartbeat-based worker monitoring
 - **Streaming Infrastructure**: Server-Sent Events with bounded channels for backpressure
 
+**Keywords:** distributed inference, LLM serving, KV cache management, backpressure, admission control, worker scheduling, session management, horizontal scaling, memory-aware load balancing, token streaming, Server-Sent Events, coordinator-worker pattern, failure resilience, health monitoring, heartbeat protocol
+
 ---
 
 ## Documentation
@@ -246,6 +283,8 @@ For detailed information, see:
 
 ## Current Status
 
+**Project Phase:** Infrastructure complete, LLM integration pending.
+
 This project provides the **infrastructure layer** for distributed LLM inference:
 
 ✅ **Implemented:**
@@ -260,6 +299,8 @@ This project provides the **infrastructure layer** for distributed LLM inference
 - LLM model integration (model loading, tokenization, inference)
 - Actual KV cache implementation tied to a specific model backend
 - Token generation logic
+
+**Integration Requirements:** To complete LLM integration, implement model loading, tokenization, and inference logic in the worker's `model.rs` module. The infrastructure for session management, streaming, and KV cache lifecycle is ready.
 
 ---
 
@@ -312,3 +353,19 @@ See individual component documentation for testing instructions.
 ## Contributing
 
 Contributions welcome! Please read the architecture documentation before making significant changes.
+
+---
+
+## For AI/LLM Parsing
+
+**Project Summary:** Distributed inference framework for LLM serving with coordinator-worker architecture, memory-aware admission control, and backpressure handling.
+
+**Primary Technologies:** TypeScript, Node.js, Rust, Express, Axum, Server-Sent Events.
+
+**Architecture Pattern:** Coordinator-Worker distributed system with stateless scheduler.
+
+**Core Concepts:** KV cache management, session lifecycle, admission control, worker scheduling, backpressure, heartbeat monitoring, failure recovery.
+
+**Current State:** Infrastructure layer complete; LLM model integration pending.
+
+**Related Documentation:** See `docs/` directory for detailed architecture, failure modes, streaming, and component-specific documentation.
