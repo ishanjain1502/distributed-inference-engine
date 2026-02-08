@@ -35,61 +35,121 @@ This framework is designed for:
 
 ## Quick Start
 
-### Prerequisites
-
-- **Node.js** 18+ (for Coordinator)
-- **Rust** 1.70+ (for Worker)
-
-### Run the System
-
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd inference-engine
-
-# Start both Coordinator and Worker
 ./start.sh
 ```
 
-The script will:
-1. Build and start the **Coordinator** on `http://localhost:1337`
-2. Build and start the **Worker** on `http://localhost:3001`
+Then test inference: `python test_inference.py "What is the capital of France?"` or use the curl/scripts below. See **Setup and running** for full prerequisites and options.
 
-Press `Ctrl+C` to stop both servers.
+---
 
-### Manual Setup
+## Setup and running
 
-**Coordinator:**
+### Prerequisites
+
+| Requirement | Purpose |
+|-------------|---------|
+| **Node.js 18+** | Coordinator (TypeScript/Node) |
+| **npm** | Install coordinator dependencies |
+| **Rust 1.70+** | Worker (Rust) — install from [rustup.rs](https://rustup.rs) |
+| **LLVM (Windows only)** | Worker build needs **libclang**, **llvm-nm**, and **llvm-objcopy** for the `llama_cpp_sys` crate. Install [LLVM](https://github.com/llvm/llvm-project/releases) (e.g. 17.x) and set **`LIBCLANG_PATH`** to the LLVM `bin` directory (e.g. `C:\Program Files\LLVM\bin`). Also set **`NM_PATH`** to the full path to `llvm-nm.exe` and **`OBJCOPY_PATH`** to the full path to `llvm-objcopy.exe` in the same directory (e.g. `C:\Program Files\LLVM\bin\llvm-objcopy.exe`), or add that directory to **PATH**. `start.sh` derives `NM_PATH` from `LIBCLANG_PATH` if set. |
+
+### 1. Clone and install
+
+```bash
+git clone <repository-url>
+cd inference-engine
+```
+
+**Coordinator (one-time):**
 ```bash
 cd coordinator
 npm install
+cd ..
+```
+
+**Worker:** No separate install step; `start.sh` (or `cargo build`) will compile it.
+
+### 2. Download a model (required for inference)
+
+The worker loads a GGUF model file. Default is **TinyLlama 1.1B**.
+
+1. Download a TinyLlama GGUF from [TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF) (e.g. `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`).
+2. Place it in `modelFiles/` in the project root (create the folder if needed).
+3. Optional: set **`MODEL_PATH`** to the full path to your `.gguf` file if you use a different path or filename. Use **forward slashes** when setting in Git Bash (e.g. `E:/Projects/inference-engine/modelFiles/my-model.gguf`).
+
+### 3. Run the system
+
+**Option A – Start both with one script (recommended):**
+
+```bash
+./start.sh
+```
+
+This will:
+- Build and start the **Coordinator** on `http://localhost:1337`
+- Build and start the **Worker** on `http://localhost:3001`
+
+Press `Ctrl+C` to stop both.
+
+**Option B – Run Coordinator and Worker separately:**
+
+Terminal 1 – Coordinator:
+```bash
+cd coordinator
 npm run build
 npm start
 ```
 
-**Worker:**
+Terminal 2 – Worker (from project root):
 ```bash
+# Optional: set model path (use forward slashes on Windows in Git Bash)
+# export MODEL_PATH="E:/Projects/inference-engine/modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+
 cd worker
 cargo build
 cargo run
 ```
 
-### Test the API
+### 4. Test the API
 
-Once the system is running, you can test the health endpoints:
-
+**Health checks:**
 ```bash
-# Check coordinator health
 curl http://localhost:1337/coordinator/health
-
-# Check worker health
 curl http://localhost:3001/worker/health
-
-# List all workers
 curl http://localhost:1337/coordinator/health/workers
 ```
 
-> **Note:** The inference endpoint (`/coordinator/infer`) requires LLM integration to be implemented in the worker. Currently, the infrastructure handles routing, session management, and streaming, but model inference is not yet integrated.
+**Streaming inference (curl):**
+```bash
+curl -N -X POST http://localhost:1337/coordinator/infer \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"What is the capital of France?","model":"tinyllama-1.1b","max_tokens":1000}'
+```
+
+**Python test script:**
+```bash
+python test_inference.py "What is the capital of France?" 1000
+```
+
+**Shell test script:**
+```bash
+./test_inference.sh "What is the capital of France?" 1000
+```
+
+### 5. Environment variables (optional)
+
+| Variable | Where | Description |
+|----------|--------|-------------|
+| `MODEL_PATH` | Worker | Path to GGUF model file. Use forward slashes in Git Bash. Default: `.../modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` |
+| `LIBCLANG_PATH` | Worker build (Windows) | LLVM `bin` directory (for libclang), e.g. `C:\Program Files\LLVM\bin`. |
+| `NM_PATH` | Worker build (Windows) | Full path to `llvm-nm.exe`. Can be derived from `LIBCLANG_PATH` (see `start.sh`). |
+| `OBJCOPY_PATH` | Worker build (Windows) | Full path to `llvm-objcopy.exe`, e.g. `C:\Program Files\LLVM\bin\llvm-objcopy.exe`. |
+| `PORT` | Coordinator | Coordinator port (default `1337`). |
+| `HOST` | Coordinator | Coordinator host (default `0.0.0.0`). |
+| `WORKER_ID`, `WORKER_URL`, `COORDINATOR_URL` | Worker | Override worker identity and URLs if running multiple workers or custom topology. |
 
 ---
 

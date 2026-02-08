@@ -56,12 +56,17 @@ echo ""
 
 # Build and start Worker
 echo -e "${YELLOW}[2/2] Building Worker...${NC}"
-# llama_cpp_sys needs llvm-nm; derive NM_PATH from LIBCLANG_PATH if set (same LLVM bin dir)
+# llama_cpp_sys needs llvm-nm and llvm-objcopy; derive from LIBCLANG_PATH if set (same LLVM bin dir)
 if [ -n "$LIBCLANG_PATH" ]; then
     export NM_PATH="${LIBCLANG_PATH}/llvm-nm.exe"
+    export OBJCOPY_PATH="${LIBCLANG_PATH}/llvm-objcopy.exe"
     echo -e "${CYAN}NM_PATH set from LIBCLANG_PATH: $NM_PATH${NC}"
+    echo -e "${CYAN}OBJCOPY_PATH set from LIBCLANG_PATH: $OBJCOPY_PATH${NC}"
 elif [ -z "$NM_PATH" ]; then
     echo -e "${YELLOW}Warning: LIBCLANG_PATH and NM_PATH not set; worker build may fail (need llvm-nm)${NC}"
+fi
+if [ -z "$OBJCOPY_PATH" ] && [ -z "$LIBCLANG_PATH" ]; then
+    echo -e "${YELLOW}Warning: OBJCOPY_PATH not set; set to llvm-objcopy.exe path if worker build fails${NC}"
 fi
 cd "$ROOT_DIR/worker"
 cargo build
