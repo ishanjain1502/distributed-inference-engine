@@ -1,9 +1,10 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+use llama_cpp::LlamaSession;
 
 /// Session TTL - evict after this idle duration
 pub const SESSION_TTL: Duration = Duration::from_secs(300); // 5 minutes
@@ -23,6 +24,9 @@ pub struct Session {
     pub max_tokens: u32,
     pub kv_cache_bytes: u64,
     pub last_activity: Instant,
+    /// Model session for this inference request
+    /// Wrapped in Arc<Mutex<>> because LlamaSession may not be Send/Sync
+    pub model_session: Arc<Mutex<LlamaSession>>,
 }
 
 impl Session {
