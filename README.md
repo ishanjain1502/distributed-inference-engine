@@ -195,7 +195,9 @@ Environment variables (optional):
 ### Worker
 
 Environment variables:
-- `MODEL_PATH` - Path to model file (for future LLM integration, default: `/models/gemma-3-270m-it-Q8_0.gguf`)
+- `MODEL_PATH` - Path to GGUF model file. Use **forward slashes** (e.g. `E:/path/to/model.gguf`) when setting in Git Bash. Default: `E:/Projects/inference-engine/modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`
+
+**Supported models:** The worker uses the `llama_cpp` Rust crate (v0.3), which bundles llama.cpp. Default is **TinyLlama 1.1B** (TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF); use any quant e.g. `Q4_K_M.gguf`. Other supported architectures include Llama, Gemma 2, Phi, Mistral, etc. Gemma 3 is not yet supported by the bundled llama.cpp.
 - `WORKER_ID` - Unique identifier (default: `worker-1`)
 - `WORKER_URL` - Reachable URL for coordinator (default: `http://localhost:3001`)
 - `COORDINATOR_URL` - Coordinator base URL (default: `http://localhost:1337`)

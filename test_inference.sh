@@ -2,7 +2,7 @@
 
 # Simple test script for inference endpoint
 
-echo "Testing inference with Gemma 3..."
+echo "Testing inference with TinyLlama 1.1B..."
 echo ""
 
 PROMPT="${1:-What is the capital of France?}"
@@ -17,7 +17,7 @@ curl -N -X POST http://localhost:1337/coordinator/infer \
   -H "Content-Type: application/json" \
   -d "{
     \"prompt\": \"$PROMPT\",
-    \"model\": \"gemma-3-270m\",
+    \"model\": \"tinyllama-1.1b\",
     \"max_tokens\": $MAX_TOKENS
   }" \
   2>/dev/null | while IFS= read -r line; do

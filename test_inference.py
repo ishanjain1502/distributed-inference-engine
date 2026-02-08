@@ -12,7 +12,7 @@ def test_inference(prompt, max_tokens=50):
     url = "http://localhost:1337/coordinator/infer"
     payload = {
         "prompt": prompt,
-        "model": "gemma-3-270m",
+        "model": "tinyllama-1.1b",
         "max_tokens": max_tokens
     }
     
