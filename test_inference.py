@@ -8,7 +8,7 @@ import requests
 import json
 import sys
 
-def test_inference(prompt, max_tokens=50):
+def test_inference(prompt, max_tokens=1000):
     url = "http://localhost:1337/coordinator/infer"
     payload = {
         "prompt": prompt,
