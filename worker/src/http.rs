@@ -96,6 +96,11 @@ pub async fn prefill(
     };
 
     // Perform prefill (tokenize prompt and build KV cache)
+    // info!(
+    //     session_id = %session_id,
+    //     prompt = %req.prompt,
+    //     "prefill.request"
+    // );
     let prompt_clone = req.prompt.clone();
     let model_session_clone = model_session.clone();
     if let Err(e) = prefill_session(model_session_clone, prompt_clone).await {

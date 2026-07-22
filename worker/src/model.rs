@@ -70,7 +70,7 @@ pub async fn prefill_session(
     prompt: String,
 ) -> Result<u32> {
     let prompt_len = prompt.len();
-    info!(prompt_len = prompt_len, "Starting prefill");
+    info!(prompt = %prompt, prompt_len = prompt_len, "Starting prefill");
     
     // Run blocking model operation in a thread pool
     let token_count = tokio::task::spawn_blocking(move || {
