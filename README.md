@@ -41,7 +41,7 @@ cd inference-engine
 ./start.sh
 ```
 
-Then test inference: `python test_inference.py "What is the capital of France?"` or use the curl/scripts below. See **Setup and running** for full prerequisites and options.
+Open the UI at [http://localhost:1337](http://localhost:1337), or test inference with `python test_inference.py "What is the capital of France?"` / the curl scripts below. See **Setup and running** for full prerequisites and options.
 
 ---
 
@@ -114,6 +114,8 @@ cargo run
 ```
 
 ### 4. Test the API
+
+**Browser UI:** open [http://localhost:1337](http://localhost:1337) — enter a question, optional model / max tokens (max 1000), and watch tokens stream into the response panel.
 
 **Health checks:**
 ```bash
