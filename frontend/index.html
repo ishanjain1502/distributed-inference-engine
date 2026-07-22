@@ -129,6 +129,10 @@
       statusEl.classList.toggle("error", Boolean(isError));
     }
 
+    function formatElapsed(ms) {
+      return (ms / 1000).toFixed(2) + "s";
+    }
+
     function clampMaxTokens(value) {
       const n = Number(value);
       if (!Number.isFinite(n)) return 50;
@@ -149,21 +153,23 @@
     }
 
     function appendTokenFromSseLine(line) {
-      if (!line.startsWith("data:")) return;
+      if (!line.startsWith("data:")) return 0;
       const raw = line.slice(5).trim();
-      if (!raw) return;
+      if (!raw) return 0;
       let payload;
       try {
         payload = JSON.parse(raw);
       } catch {
-        return;
+        return 0;
       }
       if (payload.error) {
         throw new Error(String(payload.error));
       }
       if (typeof payload.token === "string") {
         responseEl.textContent += payload.token;
+        return 1;
       }
+      return 0;
     }
 
     async function streamSse(res) {
@@ -173,6 +179,7 @@
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let completionTokens = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -181,12 +188,13 @@
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
         for (const line of lines) {
-          appendTokenFromSseLine(line.trimEnd());
+          completionTokens += appendTokenFromSseLine(line.trimEnd());
         }
       }
       if (buffer.trim()) {
-        appendTokenFromSseLine(buffer.trim());
+        completionTokens += appendTokenFromSseLine(buffer.trim());
       }
+      return completionTokens;
     }
 
     form.addEventListener("submit", async (event) => {
@@ -201,6 +209,7 @@
       const maxTokens = clampMaxTokens(maxTokensEl.value);
       maxTokensEl.value = String(maxTokens);
 
+      const startedAt = performance.now();
       responseEl.textContent = "";
       setStatus("Streaming…", false);
       submitBtn.disabled = true;
@@ -221,11 +230,21 @@
           throw new Error("HTTP " + res.status + ": " + msg);
         }
 
-        await streamSse(res);
-        setStatus("Done", false);
+        const promptTokens = Math.ceil(prompt.length / 4);
+        const completionTokens = await streamSse(res);
+        setStatus(
+          "Done · " +
+            formatElapsed(performance.now() - startedAt) +
+            " · ~" +
+            promptTokens +
+            " + " +
+            completionTokens +
+            " tokens",
+          false
+        );
       } catch (err) {
         const message = err && err.message ? err.message : String(err);
-        setStatus(message, true);
+        setStatus(message + " · " + formatElapsed(performance.now() - startedAt), true);
       } finally {
         submitBtn.disabled = false;
       }
