@@ -62,6 +62,7 @@ async fn main() {
         .route("/worker/prefill", axum::routing::post(http::prefill))
         .route("/worker/decode", axum::routing::post(http::decode))
         .route("/worker/health", axum::routing::get(http::health))
+        .route("/worker/sessions", axum::routing::get(http::list_sessions))
         .with_state((sessions, model_manager));
 
     let addr = "0.0.0.0:3001";

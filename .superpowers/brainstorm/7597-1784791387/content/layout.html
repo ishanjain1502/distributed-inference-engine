@@ -1,0 +1,105 @@
+<h2>Which Stats page layout?</h2>
+<p class="subtitle">Click A, B, or C. Same data either way — cluster summary + per-worker + per-session rows.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Stacked workers (expandable)</h3>
+      <p>Cluster strip on top. Each worker is a row you expand to see its sessions table.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Master–detail</h3>
+      <p>Workers list on the left; selecting one fills the right panel with that worker’s sessions.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Flat session table</h3>
+      <p>Cluster strip + one big table of all sessions (worker as a column). Simpler, less hierarchy.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">A — Stacked / expandable workers</div>
+    <div class="mockup-body" style="font-family: Georgia, serif; font-size: 13px; color: #1a1a1a;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid #d0d4dc;padding-bottom:6px;">
+        <strong>Inference Engine — Stats</strong>
+        <span style="color:#5c5c5c;">← Infer · polling 2s</span>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:8px;background:#f6f7f9;border:1px solid #d0d4dc;">
+        <div><span class="label">Workers</span><div><strong>2</strong> alive</div></div>
+        <div><span class="label">Sessions</span><div><strong>3</strong> / 200</div></div>
+        <div><span class="label">KV cache</span><div><strong>48 MB</strong> / 16 GB</div></div>
+      </div>
+      <div style="border:1px solid #d0d4dc;padding:8px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;"><strong>▼ worker-1</strong><span>alive · 2 sess · 32 MB</span></div>
+        <table style="width:100%;margin-top:8px;font-size:12px;border-collapse:collapse;">
+          <tr style="text-align:left;color:#5c5c5c;"><th>Session</th><th>Model</th><th>KV</th><th>Idle</th><th>Max tok</th></tr>
+          <tr><td>sess-a1…</td><td>tinyllama</td><td>18 MB</td><td>0.4s</td><td>50</td></tr>
+          <tr><td>sess-b2…</td><td>tinyllama</td><td>14 MB</td><td>1.2s</td><td>100</td></tr>
+        </table>
+      </div>
+      <div style="border:1px solid #d0d4dc;padding:8px;opacity:0.85;">
+        <div style="display:flex;justify-content:space-between;"><strong>▶ worker-2</strong><span>alive · 1 sess · 16 MB</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">B — Master–detail</div>
+      <div class="mockup-body" style="font-family: Georgia, serif; font-size: 12px;">
+        <div style="display:flex;gap:8px;min-height:140px;">
+          <div style="width:38%;border-right:1px solid #d0d4dc;padding-right:8px;">
+            <div style="padding:6px;background:#e8eef5;border:1px solid #1f4e79;margin-bottom:4px;"><strong>worker-1</strong><br/>2 sess · 32 MB</div>
+            <div style="padding:6px;border:1px solid #d0d4dc;">worker-2<br/>1 sess · 16 MB</div>
+          </div>
+          <div style="flex:1;">
+            <div class="label">Sessions on worker-1</div>
+            <div style="margin-top:6px;line-height:1.6;">
+              sess-a1 · 18 MB · idle 0.4s<br/>
+              sess-b2 · 14 MB · idle 1.2s
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">C — Flat table</div>
+      <div class="mockup-body" style="font-family: Georgia, serif; font-size: 12px;">
+        <div style="margin-bottom:8px;padding:6px;background:#f6f7f9;border:1px solid #d0d4dc;">
+          2 workers · 3 sessions · 48 MB KV
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+          <tr style="text-align:left;color:#5c5c5c;border-bottom:1px solid #d0d4dc;">
+            <th>Worker</th><th>Session</th><th>KV</th><th>Idle</th>
+          </tr>
+          <tr><td>worker-1</td><td>sess-a1</td><td>18 MB</td><td>0.4s</td></tr>
+          <tr><td>worker-1</td><td>sess-b2</td><td>14 MB</td><td>1.2s</td></tr>
+          <tr><td>worker-2</td><td>sess-c3</td><td>16 MB</td><td>0.1s</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">Data flow (same for all layouts)</div>
+    <div class="mockup-body" style="font-family: ui-monospace, Consolas, monospace; font-size: 12px; line-height: 1.7;">
+      Browser /stats  --poll 2s--&gt;  GET /coordinator/stats<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+-- healthTable (cluster / workers)<br/>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+-- fan-out GET /worker/sessions (alive only)
+    </div>
+  </div>
+</div>

@@ -311,3 +311,52 @@ pub async fn health(State((sessions, _model_manager)): State<(Sessions, Arc<Mode
         kv_cache_bytes,
     })
 }
+
+#[derive(Serialize)]
+pub struct SessionSummary {
+    pub session_id: String,
+    pub model: String,
+    pub max_tokens: u32,
+    pub kv_cache_bytes: u64,
+    pub idle_ms: u64,
+}
+
+#[derive(Serialize)]
+pub struct SessionsResponse {
+    pub sessions: Vec<SessionSummary>,
+    pub active_sessions: usize,
+    pub total_kv_cache_bytes: u64,
+    pub max_sessions: usize,
+    pub max_kv_cache_bytes: u64,
+}
+
+/// GET /worker/sessions — list active sessions (metadata only, no prompt).
+pub async fn list_sessions(
+    State((sessions, _model_manager)): State<(Sessions, Arc<ModelManager>)>,
+) -> Json<SessionsResponse> {
+    use crate::state::{MAX_SESSIONS, MAX_TOTAL_KV_CACHE};
+
+    let sessions_read = sessions.read().await;
+    let mut list: Vec<SessionSummary> = sessions_read
+        .iter()
+        .map(|(id, s)| SessionSummary {
+            session_id: id.clone(),
+            model: s.model.clone(),
+            max_tokens: s.max_tokens,
+            kv_cache_bytes: s.kv_cache_bytes,
+            idle_ms: s.last_activity.elapsed().as_millis() as u64,
+        })
+        .collect();
+    list.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+
+    let total_kv_cache_bytes: u64 = list.iter().map(|s| s.kv_cache_bytes).sum();
+    let active_sessions = list.len();
+
+    Json(SessionsResponse {
+        sessions: list,
+        active_sessions,
+        total_kv_cache_bytes,
+        max_sessions: MAX_SESSIONS,
+        max_kv_cache_bytes: MAX_TOTAL_KV_CACHE,
+    })
+}

@@ -89,10 +89,23 @@
       font-family: ui-monospace, Consolas, monospace;
       font-size: 0.95rem;
     }
+    nav {
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+    nav a { color: var(--accent); text-decoration: none; }
+    nav a:hover { text-decoration: underline; }
+    nav a[aria-current="page"] { font-weight: 700; color: var(--fg); }
+    nav .sep { color: var(--muted); }
   </style>
 </head>
 <body>
   <main>
+    <nav>
+      <a href="/" aria-current="page">Infer</a>
+      <span class="sep"> · </span>
+      <a href="/stats">Stats</a>
+    </nav>
     <h1>Inference Engine</h1>
     <form id="inferForm" novalidate>
       <div class="field">
