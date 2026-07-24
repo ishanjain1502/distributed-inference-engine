@@ -1,0 +1,37 @@
+services:
+  coordinator:
+    build:
+      context: .
+      dockerfile: coordinator/Dockerfile
+    ports:
+      - "1337:1337"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "1337"
+    depends_on:
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:1337/coordinator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      WORKER_ID: worker-1
+      WORKER_URL: http://worker:3001
+      COORDINATOR_URL: http://coordinator:1337
+      MODEL_PATH: /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+    volumes:
+      - ./modelFiles:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/worker/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s

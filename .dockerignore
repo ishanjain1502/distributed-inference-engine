@@ -1,0 +1,15 @@
+.git
+.superpowers
+.vscode
+docs
+modelFiles
+**/node_modules
+**/dist
+worker/target
+**/*.md
+TESTING.md
+test_inference.py
+test_inference.sh
+start.sh
+inference-engine.md
+coordinator/.env
