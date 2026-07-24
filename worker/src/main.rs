@@ -25,7 +25,9 @@ async fn main() {
     // Use forward slashes so the path is not corrupted by shells (e.g. Git Bash strips backslashes).
     let model_path = std::env::var("MODEL_PATH")
         .map(|p| p.replace('\\', "/"))
-        .unwrap_or_else(|_| "E:/Projects/inference-engine/modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf".to_string());
+        .unwrap_or_else(|_| {
+            "/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf".to_string()
+        });
     
     let model_manager = match ModelManager::load(&model_path) {
         Ok(manager) => {
@@ -62,6 +64,7 @@ async fn main() {
         .route("/worker/prefill", axum::routing::post(http::prefill))
         .route("/worker/decode", axum::routing::post(http::decode))
         .route("/worker/health", axum::routing::get(http::health))
+        .route("/worker/sessions", axum::routing::get(http::list_sessions))
         .with_state((sessions, model_manager));
 
     let addr = "0.0.0.0:3001";

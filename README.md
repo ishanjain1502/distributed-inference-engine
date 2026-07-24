@@ -41,7 +41,7 @@ cd inference-engine
 ./start.sh
 ```
 
-Then test inference: `python test_inference.py "What is the capital of France?"` or use the curl/scripts below. See **Setup and running** for full prerequisites and options.
+Open the UI at [http://localhost:1337](http://localhost:1337), or test inference with `python test_inference.py "What is the capital of France?"` / the curl scripts below. See **Setup and running** for full prerequisites and options.
 
 ---
 
@@ -55,6 +55,7 @@ Then test inference: `python test_inference.py "What is the capital of France?"`
 | **npm** | Install coordinator dependencies |
 | **Rust 1.70+** | Worker (Rust) — install from [rustup.rs](https://rustup.rs) |
 | **LLVM (Windows only)** | Worker build needs **libclang**, **llvm-nm**, and **llvm-objcopy** for the `llama_cpp_sys` crate. Install [LLVM](https://github.com/llvm/llvm-project/releases) (e.g. 17.x) and set **`LIBCLANG_PATH`** to the LLVM `bin` directory (e.g. `C:\Program Files\LLVM\bin`). Also set **`NM_PATH`** to the full path to `llvm-nm.exe` and **`OBJCOPY_PATH`** to the full path to `llvm-objcopy.exe` in the same directory (e.g. `C:\Program Files\LLVM\bin\llvm-objcopy.exe`), or add that directory to **PATH**. `start.sh` derives `NM_PATH` from `LIBCLANG_PATH` if set. |
+| **Docker (Compose v2)** | Optional: run coordinator + worker without local Node/Rust toolchains |
 
 ### 1. Clone and install
 
@@ -78,7 +79,7 @@ The worker loads a GGUF model file. Default is **TinyLlama 1.1B**.
 
 1. Download a TinyLlama GGUF from [TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF) (e.g. `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`).
 2. Place it in `modelFiles/` in the project root (create the folder if needed).
-3. Optional: set **`MODEL_PATH`** to the full path to your `.gguf` file if you use a different path or filename. Use **forward slashes** when setting in Git Bash (e.g. `E:/Projects/inference-engine/modelFiles/my-model.gguf`).
+3. Optional: set **`MODEL_PATH`** to the full path to your `.gguf` file if you use a different path or filename. Use **forward slashes** when setting in Git Bash (e.g. `E:/Projects/inference-engine/modelFiles/my-model.gguf`). For Docker, Compose mounts `modelFiles/` at `/models` and sets `MODEL_PATH` automatically.
 
 ### 3. Run the system
 
@@ -113,7 +114,21 @@ cargo build
 cargo run
 ```
 
+**Option C – Docker Compose (recommended for portable demos):**
+
+Prerequisites: [Docker](https://docs.docker.com/get-docker/) with Compose v2, and a TinyLlama GGUF in `modelFiles/` (same as above).
+
+```bash
+docker compose up --build
+```
+
+Open the UI at [http://localhost:1337](http://localhost:1337). Press `Ctrl+C` to stop (or `docker compose down` if detached).
+
+Only the coordinator port (`1337`) is published. The worker is reachable on the Compose network as `http://worker:3001`. Override the model with `MODEL_PATH` in `docker-compose.yml` or a Compose `.env` if you use a different filename under `modelFiles/`.
+
 ### 4. Test the API
+
+**Browser UI:** open [http://localhost:1337](http://localhost:1337) — enter a question, optional model / max tokens (max 1000), and watch tokens stream into the response panel.
 
 **Health checks:**
 ```bash
@@ -143,7 +158,7 @@ python test_inference.py "What is the capital of France?" 1000
 
 | Variable | Where | Description |
 |----------|--------|-------------|
-| `MODEL_PATH` | Worker | Path to GGUF model file. Use forward slashes in Git Bash. Default: `.../modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` |
+| `MODEL_PATH` | Worker | Path to GGUF model file. Use forward slashes in Git Bash. Default: `/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` |
 | `LIBCLANG_PATH` | Worker build (Windows) | LLVM `bin` directory (for libclang), e.g. `C:\Program Files\LLVM\bin`. |
 | `NM_PATH` | Worker build (Windows) | Full path to `llvm-nm.exe`. Can be derived from `LIBCLANG_PATH` (see `start.sh`). |
 | `OBJCOPY_PATH` | Worker build (Windows) | Full path to `llvm-objcopy.exe`, e.g. `C:\Program Files\LLVM\bin\llvm-objcopy.exe`. |
@@ -255,7 +270,7 @@ Environment variables (optional):
 ### Worker
 
 Environment variables:
-- `MODEL_PATH` - Path to GGUF model file. Use **forward slashes** (e.g. `E:/path/to/model.gguf`) when setting in Git Bash. Default: `E:/Projects/inference-engine/modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`
+- `MODEL_PATH` - Path to GGUF model file. Use **forward slashes** (e.g. `E:/path/to/model.gguf`) when setting in Git Bash. Default: `/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` (native/`start.sh` users should set this to their host path)
 
 **Supported models:** The worker uses the `llama_cpp` Rust crate (v0.3), which bundles llama.cpp. Default is **TinyLlama 1.1B** (TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF); use any quant e.g. `Q4_K_M.gguf`. Other supported architectures include Llama, Gemma 2, Phi, Mistral, etc. Gemma 3 is not yet supported by the bundled llama.cpp.
 - `WORKER_ID` - Unique identifier (default: `worker-1`)

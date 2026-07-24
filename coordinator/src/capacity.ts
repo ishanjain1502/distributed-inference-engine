@@ -31,9 +31,9 @@ export interface SystemCapacityConfig {
 
 const DEFAULT_CAPACITY_CONFIG: SystemCapacityConfig = {
   maxTotalSessions: 1000,
-  maxTotalKvCacheBytes: 64 * 1024 * 1024 * 1024, // 64 GB total
+  maxTotalKvCacheBytes: 16 * 1024 * 1024 * 1024, // 16 GB total
   maxSessionsPerWorker: 100,
-  maxKvCacheBytesPerWorker: 8 * 1024 * 1024 * 1024, // 8 GB per worker
+  maxKvCacheBytesPerWorker: 4 * 1024 * 1024 * 1024, // 4 GB per worker
 };
 
 let capacityConfig = { ...DEFAULT_CAPACITY_CONFIG };

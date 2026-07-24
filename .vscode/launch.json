@@ -1,0 +1,53 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Coordinator",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/coordinator",
+      "preLaunchTask": "build-coordinator",
+      "program": "${workspaceFolder}/coordinator/dist/server.js",
+      "outFiles": ["${workspaceFolder}/coordinator/dist/**/*.js"],
+      "sourceMaps": true,
+      "env": {
+        "PORT": "1337",
+        "HOST": "0.0.0.0"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Worker",
+      "type": "lldb",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/worker",
+      "cargo": {
+        "args": [
+          "build",
+          "--manifest-path=${workspaceFolder}/worker/Cargo.toml",
+          "--bin=worker",
+          "--package=worker"
+        ],
+        "filter": {
+          "name": "worker",
+          "kind": "bin"
+        }
+      },
+      "env": {
+        "MODEL_PATH": "E:/Projects/inference-engine/modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+        "WORKER_ID": "worker-1",
+        "WORKER_URL": "http://localhost:3001",
+        "COORDINATOR_URL": "http://localhost:1337",
+        "RUST_LOG": "info"
+      },
+      "sourceLanguages": ["rust"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack (Coordinator + Worker)",
+      "configurations": ["Coordinator", "Worker"],
+      "stopAll": true
+    }
+  ]
+}

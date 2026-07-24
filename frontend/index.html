@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inference Engine</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --fg: #1a1a1a;
+      --muted: #5c5c5c;
+      --border: #d0d4dc;
+      --accent: #1f4e79;
+      --error: #8b1e1e;
+      --panel: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+    }
+    main {
+      max-width: 40rem;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 0 0 1.5rem;
+      letter-spacing: -0.02em;
+    }
+    label {
+      display: block;
+      font-size: 0.9rem;
+      margin-bottom: 0.35rem;
+      color: var(--muted);
+    }
+    .field { margin-bottom: 1rem; }
+    .row {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .row .field { flex: 1; min-width: 8rem; }
+    textarea, input[type="text"], input[type="number"], select {
+      width: 100%;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font: inherit;
+      background: var(--panel);
+      color: var(--fg);
+    }
+    textarea { min-height: 6rem; resize: vertical; }
+    button {
+      margin-top: 0.25rem;
+      padding: 0.6rem 1.25rem;
+      border: none;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    #status {
+      margin: 1rem 0 0.5rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-height: 1.35em;
+    }
+    #status.error { color: var(--error); }
+    #response {
+      margin: 0;
+      padding: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 8rem;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.95rem;
+    }
+    nav {
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+    nav a { color: var(--accent); text-decoration: none; }
+    nav a:hover { text-decoration: underline; }
+    nav a[aria-current="page"] { font-weight: 700; color: var(--fg); }
+    nav .sep { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <nav>
+      <a href="/" aria-current="page">Infer</a>
+      <span class="sep"> · </span>
+      <a href="/stats">Stats</a>
+    </nav>
+    <h1>Inference Engine</h1>
+    <form id="inferForm" novalidate>
+      <div class="field">
+        <label for="prompt">Question</label>
+        <textarea id="prompt" name="prompt" required placeholder="What is the capital of France?"></textarea>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="model">Model</label>
+          <select id="model" name="model" required></select>
+        </div>
+        <div class="field">
+          <label for="maxTokens">Max tokens</label>
+          <input id="maxTokens" name="maxTokens" type="number" value="50" min="1" max="1000" required />
+        </div>
+      </div>
+      <button type="submit" id="submit">Submit</button>
+    </form>
+    <p id="status">Idle</p>
+    <pre id="response" aria-live="polite"></pre>
+  </main>
+  <script>
+    const MAX_TOKENS_CAP = 1000;
+
+    /** Per-model API id + chat-template formatter applied to the user's question. */
+    const MODELS = [
+      {
+        name: "tinyllama-1.1b",
+        label: "TinyLlama 1.1B",
+        formatPrompt(question) {
+          return (
+            "<|system|>\n" +
+            "You are a helpful assistant.</s>\n" +
+            "<|user|>\n" +
+            "Hello!</s>\n" +
+            "<|assistant|>\n" +
+            "Hi there! How can I help you today?</s>\n" +
+            "<|user|>\n" +
+            question +
+            "</s>\n" +
+            "<|assistant|>\n"
+          );
+        },
+      },
+    ];
+
+    const form = document.getElementById("inferForm");
+    const promptEl = document.getElementById("prompt");
+    const modelEl = document.getElementById("model");
+    const maxTokensEl = document.getElementById("maxTokens");
+    const submitBtn = document.getElementById("submit");
+    const statusEl = document.getElementById("status");
+    const responseEl = document.getElementById("response");
+
+    for (const m of MODELS) {
+      const opt = document.createElement("option");
+      opt.value = m.name;
+      opt.textContent = m.label;
+      modelEl.appendChild(opt);
+    }
+
+    function selectedModel() {
+      return MODELS.find((m) => m.name === modelEl.value) || MODELS[0];
+    }
+
+    function setStatus(text, isError) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("error", Boolean(isError));
+    }
+
+    function formatElapsed(ms) {
+      return (ms / 1000).toFixed(2) + "s";
+    }
+
+    function clampMaxTokens(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return 50;
+      return Math.min(Math.max(1, Math.floor(n)), MAX_TOKENS_CAP);
+    }
+
+    async function readErrorBody(res) {
+      const text = await res.text();
+      try {
+        const json = JSON.parse(text);
+        if (json.error) {
+          return json.reason ? json.error + ": " + json.reason : String(json.error);
+        }
+        return text || res.statusText;
+      } catch {
+        return text || res.statusText;
+      }
+    }
+
+    function appendTokenFromSseLine(line) {
+      if (!line.startsWith("data:")) return 0;
+      const raw = line.slice(5).trim();
+      if (!raw) return 0;
+      let payload;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        return 0;
+      }
+      if (payload.error) {
+        throw new Error(String(payload.error));
+      }
+      if (typeof payload.token === "string") {
+        responseEl.textContent += payload.token;
+        return 1;
+      }
+      return 0;
+    }
+
+    async function streamSse(res) {
+      if (!res.body) {
+        throw new Error("No response body");
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let completionTokens = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          completionTokens += appendTokenFromSseLine(line.trimEnd());
+        }
+      }
+      if (buffer.trim()) {
+        completionTokens += appendTokenFromSseLine(buffer.trim());
+      }
+      return completionTokens;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const question = promptEl.value.trim();
+      if (!question) {
+        setStatus("Enter a question.", true);
+        return;
+      }
+
+      const model = selectedModel();
+      const prompt = model.formatPrompt(question);
+      const maxTokens = clampMaxTokens(maxTokensEl.value);
+      maxTokensEl.value = String(maxTokens);
+
+      const startedAt = performance.now();
+      responseEl.textContent = "";
+      setStatus("Streaming…", false);
+      submitBtn.disabled = true;
+
+      try {
+        const res = await fetch("/coordinator/infer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: prompt,
+            model: model.name,
+            max_tokens: maxTokens,
+          }),
+        });
+
+        if (!res.ok) {
+          const msg = await readErrorBody(res);
+          throw new Error("HTTP " + res.status + ": " + msg);
+        }
+
+        const promptTokens = Math.ceil(prompt.length / 4);
+        const completionTokens = await streamSse(res);
+        setStatus(
+          "Done · " +
+            formatElapsed(performance.now() - startedAt) +
+            " · ~" +
+            promptTokens +
+            " + " +
+            completionTokens +
+            " tokens",
+          false
+        );
+      } catch (err) {
+        const message = err && err.message ? err.message : String(err);
+        setStatus(message + " · " + formatElapsed(performance.now() - startedAt), true);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

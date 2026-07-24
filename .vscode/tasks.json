@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-coordinator",
+      "type": "npm",
+      "script": "build",
+      "path": "coordinator",
+      "group": "build",
+      "problemMatcher": ["$tsc"],
+      "detail": "Compile coordinator TypeScript to dist/"
+    }
+  ]
+}

@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inference Engine — Stats</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --fg: #1a1a1a;
+      --muted: #5c5c5c;
+      --border: #d0d4dc;
+      --accent: #1f4e79;
+      --error: #8b1e1e;
+      --panel: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+    }
+    main {
+      max-width: 48rem;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 3rem;
+    }
+    nav {
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+    nav a { color: var(--accent); text-decoration: none; }
+    nav a:hover { text-decoration: underline; }
+    nav a[aria-current="page"] { font-weight: 700; color: var(--fg); }
+    nav .sep { color: var(--muted); }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 0 0 1.25rem;
+      letter-spacing: -0.02em;
+    }
+    #cluster {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem 1.5rem;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.95rem;
+    }
+    #cluster .label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    #updateHint {
+      margin: 0 0 1rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 1.25em;
+    }
+    #updateHint.error { color: var(--error); }
+    .worker {
+      margin-bottom: 0.65rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .worker-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: none;
+      background: transparent;
+      font: inherit;
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .worker-header:hover { background: var(--bg); }
+    .worker-meta { color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
+    .worker-body {
+      padding: 0 1rem 0.85rem;
+      border-top: 1px solid var(--border);
+    }
+    .worker-body[hidden] { display: none; }
+    .sessions-error {
+      margin: 0.75rem 0 0;
+      color: var(--error);
+      font-size: 0.9rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.65rem;
+      font-size: 0.9rem;
+      font-family: ui-monospace, Consolas, monospace;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.35rem 0.5rem 0.35rem 0;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 0.8rem;
+    }
+    .empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin: 0.75rem 0 0;
+    }
+    .status-alive { color: #1a5c2e; }
+    .status-stale { color: #8a6d1b; }
+    .status-dead { color: var(--error); }
+  </style>
+</head>
+<body>
+  <main>
+    <nav>
+      <a href="/">Infer</a>
+      <span class="sep"> · </span>
+      <a href="/stats" aria-current="page">Stats</a>
+    </nav>
+    <h1>Stats</h1>
+    <div id="cluster" aria-live="polite">
+      <div><span class="label">Workers</span><strong id="cAlive">—</strong> alive</div>
+      <div><span class="label">Sessions</span><strong id="cSessions">—</strong></div>
+      <div><span class="label">KV cache</span><strong id="cKv">—</strong></div>
+    </div>
+    <p id="updateHint">Loading…</p>
+    <div id="workers"></div>
+  </main>
+  <script>
+    const POLL_MS = 2000;
+    const expanded = new Set();
+    const seenWorkers = new Set();
+    let lastSnapshot = null;
+    let pollTimer = null;
+
+    const workersEl = document.getElementById("workers");
+    const updateHint = document.getElementById("updateHint");
+    const cAlive = document.getElementById("cAlive");
+    const cSessions = document.getElementById("cSessions");
+    const cKv = document.getElementById("cKv");
+
+    function formatBytes(n) {
+      const bytes = Number(n) || 0;
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+    }
+
+    function formatIdle(ms) {
+      const m = Number(ms) || 0;
+      if (m < 1000) return m + " ms";
+      if (m < 60_000) return (m / 1000).toFixed(1) + " s";
+      return (m / 60_000).toFixed(1) + " min";
+    }
+
+    function statusClass(status) {
+      if (status === "alive") return "status-alive";
+      if (status === "stale") return "status-stale";
+      return "status-dead";
+    }
+
+    function applyDefaults(snapshot) {
+      for (const w of snapshot.workers || []) {
+        if (seenWorkers.has(w.id)) continue;
+        seenWorkers.add(w.id);
+        const active = (w.health && w.health.active_sessions) || (w.sessions && w.sessions.length) || 0;
+        if (active > 0) expanded.add(w.id);
+      }
+    }
+
+    function renderCluster(cluster, fetchFailed) {
+      const alive = cluster.alive ?? 0;
+      const sessions = cluster.total_sessions ?? 0;
+      const maxSessions = cluster.max_total_sessions;
+      const kv = cluster.total_kv_cache_bytes ?? 0;
+      const maxKv = cluster.max_total_kv_cache_bytes;
+
+      cAlive.textContent = String(alive);
+      cSessions.textContent =
+        maxSessions != null ? sessions + " / " + maxSessions : String(sessions);
+      cKv.textContent =
+        maxKv != null
+          ? formatBytes(kv) + " / " + formatBytes(maxKv)
+          : formatBytes(kv);
+
+      if (fetchFailed) {
+        updateHint.textContent = "Update failed · retrying…";
+        updateHint.classList.add("error");
+      } else {
+        updateHint.textContent = "Updated just now · polling every 2s";
+        updateHint.classList.remove("error");
+      }
+    }
+
+    function renderSessionsTable(sessions) {
+      if (!sessions || sessions.length === 0) {
+        return '<p class="empty">No active sessions</p>';
+      }
+      let html =
+        "<table><thead><tr>" +
+        "<th>Session</th><th>Model</th><th>KV</th><th>Idle</th><th>Max tok</th>" +
+        "</tr></thead><tbody>";
+      for (const s of sessions) {
+        html +=
+          "<tr>" +
+          "<td>" +
+          escapeHtml(s.session_id) +
+          "</td>" +
+          "<td>" +
+          escapeHtml(s.model) +
+          "</td>" +
+          "<td>" +
+          formatBytes(s.kv_cache_bytes) +
+          "</td>" +
+          "<td>" +
+          formatIdle(s.idle_ms) +
+          "</td>" +
+          "<td>" +
+          escapeHtml(String(s.max_tokens)) +
+          "</td>" +
+          "</tr>";
+      }
+      html += "</tbody></table>";
+      return html;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function render(snapshot, fetchFailed) {
+      applyDefaults(snapshot);
+      renderCluster(snapshot.cluster || {}, fetchFailed);
+
+      const workers = snapshot.workers || [];
+      if (workers.length === 0) {
+        workersEl.innerHTML = '<p class="empty">No workers registered</p>';
+        return;
+      }
+
+      workersEl.innerHTML = "";
+      for (const w of workers) {
+        const isOpen = expanded.has(w.id);
+        const sessCount =
+          w.sessions && w.sessions.length
+            ? w.sessions.length
+            : (w.health && w.health.active_sessions) || 0;
+        const kv =
+          w.health && typeof w.health.kv_cache_bytes === "number"
+            ? w.health.kv_cache_bytes
+            : 0;
+
+        const wrap = document.createElement("div");
+        wrap.className = "worker";
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "worker-header";
+        btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        btn.innerHTML =
+          "<span>" +
+          (isOpen ? "▼ " : "▶ ") +
+          "<strong>" +
+          escapeHtml(w.id) +
+          "</strong> " +
+          '<span class="' +
+          statusClass(w.status) +
+          '">' +
+          escapeHtml(w.status) +
+          "</span></span>" +
+          '<span class="worker-meta">' +
+          sessCount +
+          " sess · " +
+          formatBytes(kv) +
+          "</span>";
+
+        btn.addEventListener("click", () => {
+          if (expanded.has(w.id)) expanded.delete(w.id);
+          else expanded.add(w.id);
+          if (lastSnapshot) render(lastSnapshot, false);
+        });
+
+        const body = document.createElement("div");
+        body.className = "worker-body";
+        if (!isOpen) body.hidden = true;
+
+        if (w.sessions_error) {
+          body.innerHTML =
+            '<p class="sessions-error">' +
+            escapeHtml(w.sessions_error) +
+            "</p>";
+        } else {
+          body.innerHTML = renderSessionsTable(w.sessions || []);
+        }
+
+        wrap.appendChild(btn);
+        wrap.appendChild(body);
+        workersEl.appendChild(wrap);
+      }
+    }
+
+    async function poll() {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch("/coordinator/stats");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        lastSnapshot = await res.json();
+        render(lastSnapshot, false);
+      } catch {
+        if (lastSnapshot) render(lastSnapshot, true);
+        else {
+          updateHint.textContent = "Update failed · retrying…";
+          updateHint.classList.add("error");
+        }
+      }
+    }
+
+    function startPolling() {
+      clearInterval(pollTimer);
+      poll();
+      pollTimer = setInterval(poll, POLL_MS);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") startPolling();
+      else clearInterval(pollTimer);
+    });
+
+    startPolling();
+  </script>
+</body>
+</html>
