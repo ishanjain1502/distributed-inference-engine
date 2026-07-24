@@ -128,7 +128,11 @@ Only the coordinator port (`1337`) is published. The worker is reachable on the 
 
 ### 4. Test the API
 
-**Browser UI:** open [http://localhost:1337](http://localhost:1337) — enter a question, optional model / max tokens (max 1000), and watch tokens stream into the response panel.
+**Browser UI:** open [http://localhost:1337](http://localhost:1337) — enter a question, optional model / max tokens (max 1000), and watch tokens stream into the response panel. Live thread and worker stats are at [http://localhost:1337/stats](http://localhost:1337/stats).
+
+![Inference UI](docs/images/frontend-infer.png)
+
+![Stats UI](docs/images/frontend-stats.png)
 
 **Health checks:**
 ```bash
