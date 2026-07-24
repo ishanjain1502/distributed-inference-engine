@@ -46,7 +46,7 @@
       flex-wrap: wrap;
     }
     .row .field { flex: 1; min-width: 8rem; }
-    textarea, input[type="text"], input[type="number"] {
+    textarea, input[type="text"], input[type="number"], select {
       width: 100%;
       padding: 0.55rem 0.65rem;
       border: 1px solid var(--border);
@@ -115,7 +115,7 @@
       <div class="row">
         <div class="field">
           <label for="model">Model</label>
-          <input id="model" name="model" type="text" value="tinyllama-1.1b" required />
+          <select id="model" name="model" required></select>
         </div>
         <div class="field">
           <label for="maxTokens">Max tokens</label>
@@ -129,6 +129,29 @@
   </main>
   <script>
     const MAX_TOKENS_CAP = 1000;
+
+    /** Per-model API id + chat-template formatter applied to the user's question. */
+    const MODELS = [
+      {
+        name: "tinyllama-1.1b",
+        label: "TinyLlama 1.1B",
+        formatPrompt(question) {
+          return (
+            "<|system|>\n" +
+            "You are a helpful assistant.</s>\n" +
+            "<|user|>\n" +
+            "Hello!</s>\n" +
+            "<|assistant|>\n" +
+            "Hi there! How can I help you today?</s>\n" +
+            "<|user|>\n" +
+            question +
+            "</s>\n" +
+            "<|assistant|>\n"
+          );
+        },
+      },
+    ];
+
     const form = document.getElementById("inferForm");
     const promptEl = document.getElementById("prompt");
     const modelEl = document.getElementById("model");
@@ -136,6 +159,17 @@
     const submitBtn = document.getElementById("submit");
     const statusEl = document.getElementById("status");
     const responseEl = document.getElementById("response");
+
+    for (const m of MODELS) {
+      const opt = document.createElement("option");
+      opt.value = m.name;
+      opt.textContent = m.label;
+      modelEl.appendChild(opt);
+    }
+
+    function selectedModel() {
+      return MODELS.find((m) => m.name === modelEl.value) || MODELS[0];
+    }
 
     function setStatus(text, isError) {
       statusEl.textContent = text;
@@ -212,13 +246,14 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const prompt = promptEl.value.trim();
-      if (!prompt) {
+      const question = promptEl.value.trim();
+      if (!question) {
         setStatus("Enter a question.", true);
         return;
       }
 
-      const model = modelEl.value.trim() || "tinyllama-1.1b";
+      const model = selectedModel();
+      const prompt = model.formatPrompt(question);
       const maxTokens = clampMaxTokens(maxTokensEl.value);
       maxTokensEl.value = String(maxTokens);
 
@@ -233,7 +268,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: prompt,
-            model: model,
+            model: model.name,
             max_tokens: maxTokens,
           }),
         });
