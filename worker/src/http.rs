@@ -20,12 +20,8 @@ use crate::state::{check_capacity, Session, Sessions};
 use crate::stream::TokenEmitter;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum PrefillMode {
-    #[default]
-    Create,
-    Continue,
+fn default_prefill_mode() -> String {
+    "create".to_string()
 }
 
 #[derive(Deserialize)]
@@ -34,8 +30,23 @@ pub struct PrefillRequest {
     pub prompt: String,
     pub model: String,
     pub max_tokens: u32,
-    #[serde(default)]
-    pub mode: PrefillMode,
+    #[serde(default = "default_prefill_mode")]
+    pub mode: String,
+}
+
+/// Rejects unknown prefill modes with HTTP 400 (`reason: invalid_mode`).
+fn validate_prefill_mode(mode: &str) -> Result<(), (StatusCode, Json<PrefillErrorBody>)> {
+    if mode == "create" || mode == "continue" {
+        Ok(())
+    } else {
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(PrefillErrorBody {
+                error: "Invalid mode".into(),
+                reason: "invalid_mode".into(),
+            }),
+        ))
+    }
 }
 
 #[derive(Serialize)]
@@ -63,11 +74,13 @@ pub async fn prefill(
     State((sessions, model_manager)): State<(Sessions, Arc<ModelManager>)>,
     Json(req): Json<PrefillRequest>,
 ) -> Result<Json<PrefillResponse>, (StatusCode, Json<PrefillErrorBody>)> {
+    validate_prefill_mode(&req.mode)?;
+
     let prefill_start = Instant::now();
     let session_id = req.session_id.clone();
     let added_tokens = budget::estimate_tokens(&req.prompt);
 
-    if req.mode == PrefillMode::Continue {
+    if req.mode == "continue" {
         let mut sessions_write = sessions.write().await;
         let session = match sessions_write.get_mut(&session_id) {
             Some(session) => session,
@@ -527,22 +540,34 @@ mod tests {
         }))
         .unwrap();
 
-        assert_eq!(request.mode, PrefillMode::Create);
+        assert_eq!(request.mode, "create");
     }
 
     #[test]
-    fn prefill_request_rejects_unknown_mode() {
-        let error = serde_json::from_value::<PrefillRequest>(json!({
+    fn prefill_invalid_mode_returns_400() {
+        let (status, body) = validate_prefill_mode("replace").unwrap_err();
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body.error, "Invalid mode");
+        assert_eq!(body.reason, "invalid_mode");
+    }
+
+    #[test]
+    fn prefill_unknown_mode_deserializes_then_rejects() {
+        let request: PrefillRequest = serde_json::from_value(json!({
             "session_id": "session-1",
             "prompt": "Hello",
             "model": "tinyllama",
             "max_tokens": 32,
             "mode": "replace"
         }))
-        .err()
-        .expect("unknown prefill mode should be rejected");
+        .unwrap();
 
-        assert!(error.to_string().contains("unknown variant `replace`"));
+        assert_eq!(request.mode, "replace");
+        assert_eq!(
+            validate_prefill_mode(&request.mode).unwrap_err().0,
+            StatusCode::BAD_REQUEST
+        );
     }
 
     #[test]
