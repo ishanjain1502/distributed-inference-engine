@@ -1,5 +1,7 @@
-If request.session_id exists:
+If request.conversation_id maps to a live registry entry:
     route to worker owning that session
+Else:
+    select worker by load score
 
 ### Scheduler keeps:
 

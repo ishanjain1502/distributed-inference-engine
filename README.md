@@ -145,7 +145,7 @@ curl http://localhost:1337/coordinator/health/workers
 ```bash
 curl -N -X POST http://localhost:1337/coordinator/infer \
   -H "Content-Type: application/json" \
-  -d '{"prompt":"What is the capital of France?","model":"tinyllama-1.1b","max_tokens":1000}'
+  -d '{"conversation_id":"550e8400-e29b-41d4-a716-446655440000","prompt":"What is the capital of France?","model":"tinyllama-1.1b","max_tokens":1000}'
 ```
 
 **Python test script:**
@@ -237,11 +237,14 @@ Start an inference request. Returns streaming tokens via Server-Sent Events.
 **Request:**
 ```json
 {
+  "conversation_id": "uuid",
   "prompt": "string",
   "model": "string",
   "max_tokens": number
 }
 ```
+
+`conversation_id` is required (client-generated UUID). Reuse it across turns for multi-turn chat; concurrent requests with the same id are queued.
 
 **Response:** `text/event-stream`
 
@@ -256,6 +259,7 @@ Each SSE event:
 **Status Codes:**
 - `200` - Success (streaming)
 - `400` - Missing required fields
+- `409` - Conversation reset required (`reason`: `session_full` or `session_gone`)
 - `502` - Worker unreachable or failed
 - `503` - System at capacity
 

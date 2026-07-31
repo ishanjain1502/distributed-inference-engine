@@ -7,10 +7,12 @@ Usage: python test_inference.py "Your prompt here" [max_tokens]
 import requests
 import json
 import sys
+import uuid
 
 def test_inference(prompt, max_tokens=1000):
     url = "http://localhost:1337/coordinator/infer"
     payload = {
+        "conversation_id": str(uuid.uuid4()),
         "prompt": prompt,
         "model": "tinyllama-1.1b",
         "max_tokens": max_tokens

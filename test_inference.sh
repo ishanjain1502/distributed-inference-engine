@@ -7,6 +7,10 @@ echo ""
 
 PROMPT="${1:-What is the capital of France?}"
 MAX_TOKENS="${2:-50}"
+CONVERSATION_ID="$(
+  uuidgen 2>/dev/null ||
+    python -c 'import uuid; print(uuid.uuid4())'
+)"
 
 echo "Prompt: $PROMPT"
 echo "Max tokens: $MAX_TOKENS"
@@ -16,6 +20,7 @@ echo "Response:"
 curl -N -X POST http://localhost:1337/coordinator/infer \
   -H "Content-Type: application/json" \
   -d "{
+    \"conversation_id\": \"$CONVERSATION_ID\",
     \"prompt\": \"$PROMPT\",
     \"model\": \"tinyllama-1.1b\",
     \"max_tokens\": $MAX_TOKENS

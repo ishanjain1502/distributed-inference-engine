@@ -70,6 +70,18 @@
       opacity: 0.55;
       cursor: not-allowed;
     }
+    button.secondary {
+      background: var(--panel);
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .actions button { margin-top: 0.25rem; }
     #status {
       margin: 1rem 0 0.5rem;
       font-size: 0.9rem;
@@ -122,7 +134,10 @@
           <input id="maxTokens" name="maxTokens" type="number" value="50" min="1" max="1000" required />
         </div>
       </div>
-      <button type="submit" id="submit">Submit</button>
+      <div class="actions">
+        <button type="submit" id="submit">Submit</button>
+        <button type="button" id="newConversation" class="secondary">New conversation</button>
+      </div>
     </form>
     <p id="status">Idle</p>
     <pre id="response" aria-live="polite"></pre>
@@ -130,7 +145,14 @@
   <script>
     const MAX_TOKENS_CAP = 1000;
 
-    /** Per-model API id + chat-template formatter applied to the user's question. */
+    /**
+     * Per-model API id + chat-template formatters applied to the user's question.
+     * `formatPrompt` builds the full template (system preamble + example turn)
+     * for the first message of a conversation. `formatContinuation` builds just
+     * the new turn fragment for later messages in the same conversation, since
+     * the worker already has the prior turns in its KV cache via `advance_context`
+     * and re-sending the full template would duplicate history in-context.
+     */
     const MODELS = [
       {
         name: "tinyllama-1.1b",
@@ -149,6 +171,15 @@
             "<|assistant|>\n"
           );
         },
+        formatContinuation(question) {
+          return (
+            "</s>\n" +
+            "<|user|>\n" +
+            question +
+            "</s>\n" +
+            "<|assistant|>\n"
+          );
+        },
       },
     ];
 
@@ -159,6 +190,22 @@
     const submitBtn = document.getElementById("submit");
     const statusEl = document.getElementById("status");
     const responseEl = document.getElementById("response");
+    const newConversationBtn = document.getElementById("newConversation");
+
+    let conversationId = crypto.randomUUID();
+    // True until a turn in the current conversation completes successfully;
+    // controls whether we send the full chat template or just the new-turn
+    // fragment (the worker keeps prior turns in its KV cache via `continue`).
+    let isFirstTurn = true;
+
+    function resetConversation(reason) {
+      conversationId = crypto.randomUUID();
+      isFirstTurn = true;
+      setStatus(
+        (reason ? reason + " · " : "") + "New conversation " + conversationId.slice(0, 8) + "…",
+        !!reason
+      );
+    }
 
     for (const m of MODELS) {
       const opt = document.createElement("option");
@@ -244,6 +291,11 @@
       return completionTokens;
     }
 
+    newConversationBtn.addEventListener("click", () => {
+      resetConversation(null);
+      responseEl.textContent = "";
+    });
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const question = promptEl.value.trim();
@@ -253,7 +305,7 @@
       }
 
       const model = selectedModel();
-      const prompt = model.formatPrompt(question);
+      const prompt = isFirstTurn ? model.formatPrompt(question) : model.formatContinuation(question);
       const maxTokens = clampMaxTokens(maxTokensEl.value);
       maxTokensEl.value = String(maxTokens);
 
@@ -261,12 +313,14 @@
       responseEl.textContent = "";
       setStatus("Streaming…", false);
       submitBtn.disabled = true;
+      newConversationBtn.disabled = true;
 
       try {
         const res = await fetch("/coordinator/infer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            conversation_id: conversationId,
             prompt: prompt,
             model: model.name,
             max_tokens: maxTokens,
@@ -274,12 +328,28 @@
         });
 
         if (!res.ok) {
+          if (res.status === 409) {
+            let reason = "session reset";
+            try {
+              const body = JSON.parse(await res.text());
+              reason = body.reason || reason;
+            } catch (_) {}
+            resetConversation(reason);
+            throw new Error("Conversation reset (" + reason + "). Ask again in the new conversation.");
+          }
+          if (res.status === 413) {
+            // Prompt alone exceeds the context budget - rotating conversation_id
+            // can't help (a fresh session hits the same limit), so keep the
+            // current conversation and just ask for a shorter question.
+            throw new Error("Question is too long for the model's context window. Please shorten it and try again.");
+          }
           const msg = await readErrorBody(res);
           throw new Error("HTTP " + res.status + ": " + msg);
         }
 
         const promptTokens = Math.ceil(prompt.length / 4);
         const completionTokens = await streamSse(res);
+        isFirstTurn = false;
         setStatus(
           "Done · " +
             formatElapsed(performance.now() - startedAt) +
@@ -291,10 +361,18 @@
           false
         );
       } catch (err) {
+        // isFirstTurn only flips back to true when the conversation itself
+        // rotates (see resetConversation(), invoked on 409 reset). Stream
+        // failures, network errors, and 413 (prompt too long) all keep the
+        // same conversation_id and the coordinator keeps the worker session
+        // + its KV-cache history intact, so forcing isFirstTurn back to
+        // true here would resend the full chat template as a "continue"
+        // and duplicate history already present in the model's context.
         const message = err && err.message ? err.message : String(err);
         setStatus(message + " · " + formatElapsed(performance.now() - startedAt), true);
       } finally {
         submitBtn.disabled = false;
+        newConversationBtn.disabled = false;
       }
     });
   </script>
