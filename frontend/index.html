@@ -292,6 +292,7 @@
       responseEl.textContent = "";
       setStatus("Streaming…", false);
       submitBtn.disabled = true;
+      newConversationBtn.disabled = true;
 
       try {
         const res = await fetch("/coordinator/infer", {
@@ -336,6 +337,7 @@
         setStatus(message + " · " + formatElapsed(performance.now() - startedAt), true);
       } finally {
         submitBtn.disabled = false;
+        newConversationBtn.disabled = false;
       }
     });
   </script>
