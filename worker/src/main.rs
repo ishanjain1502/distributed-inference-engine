@@ -1,3 +1,4 @@
+mod budget;
 mod cache;
 mod heartbeat;
 mod http;

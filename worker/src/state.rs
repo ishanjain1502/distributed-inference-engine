@@ -15,6 +15,8 @@ pub const MAX_SESSIONS: usize = 100;
 /// Maximum KV cache bytes per session
 pub const MAX_KV_CACHE_PER_SESSION: u64 = 512 * 1024 * 1024; // 512 MB
 
+/// Context token budget: see `budget::MAX_CONTEXT_TOKENS` (2048).
+
 /// Maximum total KV cache bytes across all sessions
 pub const MAX_TOTAL_KV_CACHE: u64 = 8 * 1024 * 1024 * 1024; // 8 GB
 
@@ -23,6 +25,7 @@ pub struct Session {
     pub model: String,
     pub max_tokens: u32,
     pub kv_cache_bytes: u64,
+    pub approx_tokens: u32,
     pub last_activity: Instant,
     /// Model session for this inference request
     /// Wrapped in Arc<Mutex<>> because LlamaSession may not be Send/Sync

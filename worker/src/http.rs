@@ -15,6 +15,7 @@ use tracing::{debug, info, warn};
 
 use crate::metrics::metrics;
 use crate::model::{ModelManager, prefill_session};
+use crate::budget;
 use crate::state::{check_capacity, Session, Sessions};
 use crate::stream::TokenEmitter;
 use std::sync::Arc;
@@ -119,10 +120,11 @@ pub async fn prefill(
     }
 
     let session = Session {
-        prompt: req.prompt,
+        prompt: req.prompt.clone(),
         model: req.model.clone(),
         max_tokens: req.max_tokens,
         kv_cache_bytes,
+        approx_tokens: budget::estimate_tokens(&req.prompt),
         last_activity: Instant::now(),
         model_session,
     };
