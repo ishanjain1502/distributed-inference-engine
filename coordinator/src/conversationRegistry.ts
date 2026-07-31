@@ -1,3 +1,5 @@
+import { sessionTracker } from './sessionTracker';
+
 export const CONVERSATION_IDLE_TTL_MS = 300_000;
 
 export interface ConversationEntry {
@@ -12,14 +14,43 @@ export class ConversationRegistry {
   private entries = new Map<string, ConversationEntry>();
   private tails = new Map<string, Promise<void>>();
 
+  private isExpired(entry: ConversationEntry, now: number): boolean {
+    return now - entry.lastActiveMs > CONVERSATION_IDLE_TTL_MS;
+  }
+
   get(conversationId: string): ConversationEntry | undefined {
     const entry = this.entries.get(conversationId);
     if (!entry) return undefined;
-    if (Date.now() - entry.lastActiveMs > CONVERSATION_IDLE_TTL_MS) {
+    if (this.isExpired(entry, Date.now())) {
       this.entries.delete(conversationId);
+      // Caller never round-trips through sweepExpired() for this id since
+      // it's already been removed here, so end tracker accounting now to
+      // avoid a capacity leak.
+      sessionTracker.sessionEnd(entry.sessionId);
       return undefined;
     }
     return entry;
+  }
+
+  /**
+   * Remove all idle-expired entries and end their tracked sessions.
+   * Handles conversation_ids that are abandoned outright (never queried
+   * again via get()), which would otherwise never be swept and would leak
+   * sessionTracker capacity accounting indefinitely. Intended to be called
+   * periodically (e.g. from a setInterval in server.ts).
+   */
+  sweepExpired(now: number = Date.now()): ConversationEntry[] {
+    const expired: ConversationEntry[] = [];
+    for (const [id, entry] of this.entries) {
+      if (this.isExpired(entry, now)) {
+        expired.push(entry);
+        this.entries.delete(id);
+      }
+    }
+    for (const entry of expired) {
+      sessionTracker.sessionEnd(entry.sessionId);
+    }
+    return expired;
   }
 
   set(conversationId: string, entry: ConversationEntry): void {

@@ -26,7 +26,13 @@ type PrefillResult =
   | { ok: true; tokensAdded: number; totalTokensEst: number }
   | {
       ok: false;
-      kind: 'session_full' | 'session_gone' | 'model_mismatch' | 'capacity' | 'other';
+      kind:
+        | 'session_full'
+        | 'session_gone'
+        | 'model_mismatch'
+        | 'prompt_too_long'
+        | 'capacity'
+        | 'other';
       status: number;
     };
 
@@ -70,11 +76,15 @@ async function tryPrefill(
       if (errBody.reason === 'session_full') reason = 'session_full';
       else if (errBody.reason === 'session_gone') reason = 'session_gone';
       else if (errBody.reason === 'model_mismatch') reason = 'model_mismatch';
+      else if (errBody.reason === 'prompt_too_long') reason = 'prompt_too_long';
     } catch {
       /* ignore */
     }
     if (prefillRes.status === 409 && reason === 'session_full') {
       return { ok: false, kind: 'session_full', status: 409 };
+    }
+    if (prefillRes.status === 413 || reason === 'prompt_too_long') {
+      return { ok: false, kind: 'prompt_too_long', status: 413 };
     }
     if (prefillRes.status === 404 || reason === 'session_gone') {
       return { ok: false, kind: 'session_gone', status: prefillRes.status };
@@ -147,6 +157,23 @@ router.post('/', async (req: Request, res: Response) => {
         conversationRegistry.delete(body.conversation_id);
         sessionTracker.sessionEnd(sessionId);
         sendReset(res, 'session_gone', requestId);
+        return;
+      } else if (result.kind === 'model_mismatch') {
+        // Registry/worker state disagree about which model this session is
+        // pinned to - treat as a lost session rather than a 502 so the
+        // existing frontend 409-reset handling applies without new UI work.
+        conversationRegistry.delete(body.conversation_id);
+        sessionTracker.sessionEnd(sessionId);
+        sendReset(res, 'session_gone', requestId);
+        return;
+      } else if (result.kind === 'prompt_too_long') {
+        conversationRegistry.delete(body.conversation_id);
+        sessionTracker.sessionEnd(sessionId);
+        res.status(413).json({
+          error: 'Prompt too long',
+          reason: 'prompt_too_long',
+          request_id: requestId,
+        });
         return;
       } else {
         conversationRegistry.delete(body.conversation_id);
@@ -227,6 +254,18 @@ router.post('/', async (req: Request, res: Response) => {
           // Prompt is too large regardless of which worker serves it -
           // retrying other workers cannot help, so fail fast.
           sendReset(res, 'session_full', requestId);
+          return;
+        }
+        if (result.kind === 'prompt_too_long') {
+          // The prompt alone (with no prior history) exceeds the context
+          // budget - no conversation_id rotation or worker retry can fix
+          // this, so surface it distinctly from session_full (409) instead
+          // of trapping the client in an unwinnable reset loop.
+          res.status(413).json({
+            error: 'Prompt too long',
+            reason: 'prompt_too_long',
+            request_id: requestId,
+          });
           return;
         }
         lastRejectionReason = result.kind;

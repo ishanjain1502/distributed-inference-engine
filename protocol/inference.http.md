@@ -34,7 +34,8 @@ Each SSE event contains:
 | Status | Meaning |
 |--------|---------|
 | 400 | Missing required fields (including `conversation_id`) |
-| 409 | Conversation reset required. Body includes `reason`: `session_full` (KV or context budget exceeded) or `session_gone` (worker/session lost). Client must use a **new** `conversation_id` after `session_full`; for `session_gone`, a new id is recommended. |
+| 409 | Conversation reset required. Body includes `reason`: `session_full` (KV or context budget exceeded) or `session_gone` (worker/session lost, including a model mismatch on continue). Client must use a **new** `conversation_id` after `session_full`; for `session_gone`, a new id is recommended. |
+| 413 | Prompt too long. Body includes `reason: "prompt_too_long"`: this turn's prompt alone exceeds the context budget, so rotating `conversation_id` cannot help - a fresh session hits the same limit. Client should shorten the prompt and retry (same `conversation_id` is fine). |
 | 502 | Worker unreachable or failed |
 | 503 | No healthy workers |
 
@@ -59,7 +60,8 @@ Initialize or extend session state. No tokens returned.
 
 - `mode`: `create` for a new worker session; `continue` to append this turn's prompt to an existing session's KV cache.
 - Continue with unknown `session_id`: worker returns `404` → coordinator surfaces `409` with `reason: session_gone`.
-- Continue with mismatched `model`: worker returns `400` (`reason: model_mismatch`).
+- Continue with mismatched `model`: worker returns `400` (`reason: model_mismatch`) → coordinator surfaces `409` with `reason: session_gone` (treated as a lost session so the existing frontend reset flow applies).
+- Create where the prompt alone exceeds `MAX_CONTEXT_TOKENS`: worker returns `413` (`reason: prompt_too_long`) → coordinator surfaces `413` unchanged. This is distinct from `session_full`/`409` because rotating `conversation_id` cannot fix it.
 
 **Response (success)**
 ```json
@@ -76,6 +78,7 @@ Initialize or extend session state. No tokens returned.
 | 400 | Invalid `mode` or model mismatch on continue |
 | 404 | Session not found (continue path) |
 | 409 | Session budget exceeded. Body includes `reason: session_full`. |
+| 413 | Prompt alone exceeds `MAX_CONTEXT_TOKENS` (create mode only). Body includes `reason: prompt_too_long`. |
 
 ---
 

@@ -145,7 +145,14 @@
   <script>
     const MAX_TOKENS_CAP = 1000;
 
-    /** Per-model API id + chat-template formatter applied to the user's question. */
+    /**
+     * Per-model API id + chat-template formatters applied to the user's question.
+     * `formatPrompt` builds the full template (system preamble + example turn)
+     * for the first message of a conversation. `formatContinuation` builds just
+     * the new turn fragment for later messages in the same conversation, since
+     * the worker already has the prior turns in its KV cache via `advance_context`
+     * and re-sending the full template would duplicate history in-context.
+     */
     const MODELS = [
       {
         name: "tinyllama-1.1b",
@@ -158,6 +165,15 @@
             "Hello!</s>\n" +
             "<|assistant|>\n" +
             "Hi there! How can I help you today?</s>\n" +
+            "<|user|>\n" +
+            question +
+            "</s>\n" +
+            "<|assistant|>\n"
+          );
+        },
+        formatContinuation(question) {
+          return (
+            "</s>\n" +
             "<|user|>\n" +
             question +
             "</s>\n" +
@@ -177,9 +193,14 @@
     const newConversationBtn = document.getElementById("newConversation");
 
     let conversationId = crypto.randomUUID();
+    // True until a turn in the current conversation completes successfully;
+    // controls whether we send the full chat template or just the new-turn
+    // fragment (the worker keeps prior turns in its KV cache via `continue`).
+    let isFirstTurn = true;
 
     function resetConversation(reason) {
       conversationId = crypto.randomUUID();
+      isFirstTurn = true;
       setStatus(
         (reason ? reason + " · " : "") + "New conversation " + conversationId.slice(0, 8) + "…",
         !!reason
@@ -284,7 +305,7 @@
       }
 
       const model = selectedModel();
-      const prompt = model.formatPrompt(question);
+      const prompt = isFirstTurn ? model.formatPrompt(question) : model.formatContinuation(question);
       const maxTokens = clampMaxTokens(maxTokensEl.value);
       maxTokensEl.value = String(maxTokens);
 
@@ -316,12 +337,19 @@
             resetConversation(reason);
             throw new Error("Conversation reset (" + reason + "). Ask again in the new conversation.");
           }
+          if (res.status === 413) {
+            // Prompt alone exceeds the context budget - rotating conversation_id
+            // can't help (a fresh session hits the same limit), so keep the
+            // current conversation and just ask for a shorter question.
+            throw new Error("Question is too long for the model's context window. Please shorten it and try again.");
+          }
           const msg = await readErrorBody(res);
           throw new Error("HTTP " + res.status + ": " + msg);
         }
 
         const promptTokens = Math.ceil(prompt.length / 4);
         const completionTokens = await streamSse(res);
+        isFirstTurn = false;
         setStatus(
           "Done · " +
             formatElapsed(performance.now() - startedAt) +
@@ -333,6 +361,10 @@
           false
         );
       } catch (err) {
+        // Any failure means we can't be sure the worker session still holds
+        // this conversation's history, so fall back to sending the full
+        // template again next time rather than risk a context-less continuation.
+        isFirstTurn = true;
         const message = err && err.message ? err.message : String(err);
         setStatus(message + " · " + formatElapsed(performance.now() - startedAt), true);
       } finally {

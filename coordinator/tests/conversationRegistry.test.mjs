@@ -6,6 +6,7 @@ const {
   ConversationRegistry,
   CONVERSATION_IDLE_TTL_MS,
 } = require('../dist/conversationRegistry.js');
+const { sessionTracker } = require('../dist/sessionTracker.js');
 
 describe('ConversationRegistry', () => {
   /** @type {ConversationRegistry} */
@@ -13,6 +14,7 @@ describe('ConversationRegistry', () => {
 
   beforeEach(() => {
     reg = new ConversationRegistry();
+    sessionTracker.clear();
   });
 
   it('get returns undefined for unknown id', () => {
@@ -53,6 +55,62 @@ describe('ConversationRegistry', () => {
       model: 'm',
     });
     assert.equal(reg.get('c1'), undefined);
+  });
+
+  it('expired entry dropped on get ends sessionTracker accounting', () => {
+    sessionTracker.sessionStart('s1', 'w1', 1000);
+    reg.set('c1', {
+      sessionId: 's1',
+      workerId: 'w1',
+      approxTokens: 0,
+      lastActiveMs: Date.now() - CONVERSATION_IDLE_TTL_MS - 1,
+      model: 'm',
+    });
+    assert.equal(sessionTracker.hasSession('s1'), true);
+    assert.equal(reg.get('c1'), undefined);
+    assert.equal(sessionTracker.hasSession('s1'), false);
+  });
+
+  it('sweepExpired removes idle entries and returns them', () => {
+    reg.set('fresh', {
+      sessionId: 's-fresh',
+      workerId: 'w1',
+      approxTokens: 0,
+      lastActiveMs: Date.now(),
+      model: 'm',
+    });
+    reg.set('stale', {
+      sessionId: 's-stale',
+      workerId: 'w1',
+      approxTokens: 0,
+      lastActiveMs: Date.now() - CONVERSATION_IDLE_TTL_MS - 1,
+      model: 'm',
+    });
+
+    const expired = reg.sweepExpired();
+
+    assert.equal(expired.length, 1);
+    assert.equal(expired[0].sessionId, 's-stale');
+    assert.equal(reg.get('stale'), undefined);
+    // Untouched entry survives the sweep.
+    const survivor = reg.get('fresh');
+    assert.equal(survivor.sessionId, 's-fresh');
+  });
+
+  it('sweepExpired ends sessionTracker accounting for abandoned conversations', () => {
+    sessionTracker.sessionStart('s-abandoned', 'w1', 2048);
+    reg.set('abandoned', {
+      sessionId: 's-abandoned',
+      workerId: 'w1',
+      approxTokens: 0,
+      lastActiveMs: Date.now() - CONVERSATION_IDLE_TTL_MS - 1,
+      model: 'm',
+    });
+
+    assert.equal(sessionTracker.activeCount, 1);
+    reg.sweepExpired();
+    assert.equal(sessionTracker.activeCount, 0);
+    assert.equal(sessionTracker.hasSession('s-abandoned'), false);
   });
 
   it('release removes drained tail from map', async () => {

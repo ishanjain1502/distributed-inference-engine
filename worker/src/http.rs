@@ -204,11 +204,22 @@ pub async fn prefill(
     }
 
     if added_tokens > budget::MAX_CONTEXT_TOKENS {
+        // The prompt alone (no prior history - this is `create` mode)
+        // exceeds the context budget. This is unwinnable via session_full's
+        // usual "rotate conversation_id" remedy since a fresh session would
+        // hit the exact same limit, so it gets a distinct 413 instead of
+        // being conflated with the retryable 409 session_full case.
+        warn!(
+            session_id = %session_id,
+            added_tokens = added_tokens,
+            max_context_tokens = budget::MAX_CONTEXT_TOKENS,
+            "prefill.prompt_too_long"
+        );
         return Err((
-            StatusCode::CONFLICT,
+            StatusCode::PAYLOAD_TOO_LARGE,
             Json(PrefillErrorBody {
-                error: "Session full".into(),
-                reason: "session_full".into(),
+                error: "Prompt too long".into(),
+                reason: "prompt_too_long".into(),
             }),
         ));
     }
