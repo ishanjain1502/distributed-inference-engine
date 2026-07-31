@@ -70,6 +70,18 @@
       opacity: 0.55;
       cursor: not-allowed;
     }
+    button.secondary {
+      background: var(--panel);
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .actions button { margin-top: 0.25rem; }
     #status {
       margin: 1rem 0 0.5rem;
       font-size: 0.9rem;
@@ -122,7 +134,10 @@
           <input id="maxTokens" name="maxTokens" type="number" value="50" min="1" max="1000" required />
         </div>
       </div>
-      <button type="submit" id="submit">Submit</button>
+      <div class="actions">
+        <button type="submit" id="submit">Submit</button>
+        <button type="button" id="newConversation" class="secondary">New conversation</button>
+      </div>
     </form>
     <p id="status">Idle</p>
     <pre id="response" aria-live="polite"></pre>
@@ -159,6 +174,17 @@
     const submitBtn = document.getElementById("submit");
     const statusEl = document.getElementById("status");
     const responseEl = document.getElementById("response");
+    const newConversationBtn = document.getElementById("newConversation");
+
+    let conversationId = crypto.randomUUID();
+
+    function resetConversation(reason) {
+      conversationId = crypto.randomUUID();
+      setStatus(
+        (reason ? reason + " · " : "") + "New conversation " + conversationId.slice(0, 8) + "…",
+        !!reason
+      );
+    }
 
     for (const m of MODELS) {
       const opt = document.createElement("option");
@@ -244,6 +270,11 @@
       return completionTokens;
     }
 
+    newConversationBtn.addEventListener("click", () => {
+      resetConversation(null);
+      responseEl.textContent = "";
+    });
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const question = promptEl.value.trim();
@@ -267,6 +298,7 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            conversation_id: conversationId,
             prompt: prompt,
             model: model.name,
             max_tokens: maxTokens,
@@ -274,6 +306,15 @@
         });
 
         if (!res.ok) {
+          if (res.status === 409) {
+            let reason = "session reset";
+            try {
+              const body = JSON.parse(await res.text());
+              reason = body.reason || reason;
+            } catch (_) {}
+            resetConversation(reason);
+            throw new Error("Conversation reset (" + reason + "). Ask again in the new conversation.");
+          }
           const msg = await readErrorBody(res);
           throw new Error("HTTP " + res.status + ": " + msg);
         }
