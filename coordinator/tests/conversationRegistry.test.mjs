@@ -113,6 +113,31 @@ describe('ConversationRegistry', () => {
     assert.equal(sessionTracker.hasSession('s-abandoned'), false);
   });
 
+  it('sweepExpired skips a conversation that holds an active lock, even if idle-expired', async () => {
+    reg.set('locked', {
+      sessionId: 's-locked',
+      workerId: 'w1',
+      approxTokens: 0,
+      lastActiveMs: Date.now() - CONVERSATION_IDLE_TTL_MS - 1,
+      model: 'm',
+    });
+
+    const release = await reg.acquire('locked');
+    assert.equal(reg.hasTail('locked'), true);
+
+    const whileLocked = reg.sweepExpired();
+    assert.equal(whileLocked.length, 0);
+
+    release();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(reg.hasTail('locked'), false);
+
+    const afterRelease = reg.sweepExpired();
+    assert.equal(afterRelease.length, 1);
+    assert.equal(afterRelease[0].sessionId, 's-locked');
+    assert.equal(reg.get('locked'), undefined);
+  });
+
   it('release removes drained tail from map', async () => {
     const release = await reg.acquire('c1');
     assert.equal(reg.hasTail('c1'), true);

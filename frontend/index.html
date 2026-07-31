@@ -361,10 +361,13 @@
           false
         );
       } catch (err) {
-        // Any failure means we can't be sure the worker session still holds
-        // this conversation's history, so fall back to sending the full
-        // template again next time rather than risk a context-less continuation.
-        isFirstTurn = true;
+        // isFirstTurn only flips back to true when the conversation itself
+        // rotates (see resetConversation(), invoked on 409 reset). Stream
+        // failures, network errors, and 413 (prompt too long) all keep the
+        // same conversation_id and the coordinator keeps the worker session
+        // + its KV-cache history intact, so forcing isFirstTurn back to
+        // true here would resend the full chat template as a "continue"
+        // and duplicate history already present in the model's context.
         const message = err && err.message ? err.message : String(err);
         setStatus(message + " · " + formatElapsed(performance.now() - startedAt), true);
       } finally {

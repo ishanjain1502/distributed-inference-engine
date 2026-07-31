@@ -38,11 +38,17 @@ export class ConversationRegistry {
    * again via get()), which would otherwise never be swept and would leak
    * sessionTracker capacity accounting indefinitely. Intended to be called
    * periodically (e.g. from a setInterval in server.ts).
+   *
+   * Ids that currently hold an active lock (an undrained acquire() tail)
+   * are skipped even if idle-expired: a request may be mid-decode with a
+   * stale lastActiveMs (only touched at request start / stream end), and
+   * deleting the entry out from under it would let a concurrent request
+   * race in and start a second session for the same conversation_id.
    */
   sweepExpired(now: number = Date.now()): ConversationEntry[] {
     const expired: ConversationEntry[] = [];
     for (const [id, entry] of this.entries) {
-      if (this.isExpired(entry, now)) {
+      if (this.isExpired(entry, now) && !this.hasTail(id)) {
         expired.push(entry);
         this.entries.delete(id);
       }

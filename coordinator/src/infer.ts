@@ -131,6 +131,11 @@ router.post('/', async (req: Request, res: Response) => {
     let sessionId: string;
 
     if (entry) {
+      // Refresh the idle clock the moment we start working this turn (not
+      // just at stream end) so a slow prefill/decode can't be mistaken for
+      // idleness by the periodic sweepExpired() sweep. This is on top of,
+      // not instead of, sweepExpired()'s own lock-aware skip.
+      conversationRegistry.touch(body.conversation_id);
       // Sticky continue: resolve the worker this conversation already lives on.
       const worker = healthTable
         .getWorkersForScheduler()
