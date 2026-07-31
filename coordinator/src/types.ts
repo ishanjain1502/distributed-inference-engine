@@ -1,4 +1,5 @@
 export interface InferRequest {
+  conversation_id: string;
   prompt: string;
   model: string;
   max_tokens: number;
