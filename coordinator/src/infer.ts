@@ -115,7 +115,7 @@ router.post('/', async (req: Request, res: Response) => {
 
   const release = await conversationRegistry.acquire(body.conversation_id);
   try {
-    let entry = conversationRegistry.get(body.conversation_id);
+    const entry = conversationRegistry.get(body.conversation_id);
 
     let selectedWorker: Worker | null = null;
     let sessionId: string;
@@ -223,9 +223,13 @@ router.post('/', async (req: Request, res: Response) => {
           sessionTracker.sessionStart(sessionId, worker.id, estimatedKvBytes);
           break;
         }
-        if (result.ok === false && result.kind !== 'other' && result.kind !== 'capacity') {
-          lastRejectionReason = result.kind;
+        if (result.kind === 'session_full') {
+          // Prompt is too large regardless of which worker serves it -
+          // retrying other workers cannot help, so fail fast.
+          sendReset(res, 'session_full', requestId);
+          return;
         }
+        lastRejectionReason = result.kind;
       }
 
       if (!selectedWorker) {
@@ -259,22 +263,26 @@ router.post('/', async (req: Request, res: Response) => {
       });
 
       if (!decodeRes.ok || !decodeRes.body) {
-        res.write(`data: ${JSON.stringify({ error: 'Worker decode failed' })}\n\n`);
-        res.end();
         conversationRegistry.delete(body.conversation_id);
         sessionTracker.sessionEnd(sessionId);
         streamMetrics.sessionEnd(sessionId, 'worker_error');
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ error: 'Worker decode failed' })}\n\n`);
+          res.end();
+        }
         return;
       }
 
       // Stream tokens from worker to client with bounded buffer and write deadlines
       await streamTokensToClient(body.conversation_id, sessionId, decodeRes.body, res);
     } catch (err) {
-      res.write(`data: ${JSON.stringify({ error: 'Worker connection lost during decode' })}\n\n`);
-      res.end();
       conversationRegistry.delete(body.conversation_id);
       sessionTracker.sessionEnd(sessionId);
       streamMetrics.sessionEnd(sessionId, 'worker_error');
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ error: 'Worker connection lost during decode' })}\n\n`);
+        res.end();
+      }
     }
   } finally {
     release();
