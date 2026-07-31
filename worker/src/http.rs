@@ -13,9 +13,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 use tracing::{debug, info, warn};
 
-use crate::metrics::metrics;
-use crate::model::{ModelManager, prefill_session};
 use crate::budget;
+use crate::metrics::metrics;
+use crate::model::{prefill_session, ModelManager};
 use crate::state::{check_capacity, Session, Sessions};
 use crate::stream::TokenEmitter;
 use std::sync::Arc;
@@ -26,17 +26,24 @@ pub struct PrefillRequest {
     pub prompt: String,
     pub model: String,
     pub max_tokens: u32,
+    #[serde(default = "default_prefill_mode")]
+    pub mode: String,
+}
+
+fn default_prefill_mode() -> String {
+    "create".to_string()
 }
 
 #[derive(Serialize)]
 pub struct PrefillResponse {
     pub status: &'static str,
+    pub tokens_added: u32,
+    pub total_tokens_est: u32,
 }
 
-/// Error response for capacity exceeded
 #[derive(Serialize)]
-pub struct CapacityExceededResponse {
-    pub error: &'static str,
+pub struct PrefillErrorBody {
+    pub error: String,
     pub reason: String,
 }
 
@@ -51,9 +58,125 @@ pub struct CapacityExceededResponse {
 pub async fn prefill(
     State((sessions, model_manager)): State<(Sessions, Arc<ModelManager>)>,
     Json(req): Json<PrefillRequest>,
-) -> Result<Json<PrefillResponse>, (StatusCode, Json<CapacityExceededResponse>)> {
+) -> Result<Json<PrefillResponse>, (StatusCode, Json<PrefillErrorBody>)> {
     let prefill_start = Instant::now();
     let session_id = req.session_id.clone();
+    let added_tokens = budget::estimate_tokens(&req.prompt);
+
+    if req.mode == "continue" {
+        let mut sessions_write = sessions.write().await;
+        let session = match sessions_write.get_mut(&session_id) {
+            Some(session) => session,
+            None => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(PrefillErrorBody {
+                        error: "Session not found".into(),
+                        reason: "session_gone".into(),
+                    }),
+                ));
+            }
+        };
+
+        if session.model != req.model {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(PrefillErrorBody {
+                    error: "Model mismatch".into(),
+                    reason: "model_mismatch".into(),
+                }),
+            ));
+        }
+
+        if budget::check_continue_budget(
+            session.approx_tokens,
+            session.kv_cache_bytes,
+            added_tokens,
+            crate::state::MAX_KV_CACHE_PER_SESSION,
+        )
+        .is_err()
+        {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(PrefillErrorBody {
+                    error: "Session full".into(),
+                    reason: "session_full".into(),
+                }),
+            ));
+        }
+
+        let model_session = session.model_session.clone();
+        drop(sessions_write);
+
+        if let Err(e) = prefill_session(model_session, req.prompt.clone()).await {
+            warn!(
+                session_id = %session_id,
+                error = %e,
+                "prefill.model_prefill_failed"
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PrefillErrorBody {
+                    error: "Prefill failed".into(),
+                    reason: e.to_string(),
+                }),
+            ));
+        }
+
+        let mut sessions_write = sessions.write().await;
+        let session = match sessions_write.get_mut(&session_id) {
+            Some(session) => session,
+            None => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(PrefillErrorBody {
+                        error: "Session not found".into(),
+                        reason: "session_gone".into(),
+                    }),
+                ));
+            }
+        };
+        session.approx_tokens = session.approx_tokens.saturating_add(added_tokens);
+        session.kv_cache_bytes = session
+            .kv_cache_bytes
+            .saturating_add(budget::estimate_kv_bytes_for_tokens(added_tokens));
+        session.max_tokens = req.max_tokens;
+        session.touch();
+        let total_tokens_est = session.approx_tokens;
+
+        let total_kv: u64 = sessions_write.values().map(|s| s.kv_cache_bytes).sum();
+        metrics().set_kv_cache_bytes(total_kv);
+        metrics().set_active_sessions(sessions_write.len() as u64);
+        drop(sessions_write);
+
+        let prefill_latency = prefill_start.elapsed();
+        metrics().record_prefill(prefill_latency);
+        info!(
+            session_id = %session_id,
+            model = %req.model,
+            max_tokens = req.max_tokens,
+            tokens_added = added_tokens,
+            total_tokens_est = total_tokens_est,
+            prefill_latency_ms = prefill_latency.as_secs_f64() * 1000.0,
+            "session.continue"
+        );
+
+        return Ok(Json(PrefillResponse {
+            status: "ok",
+            tokens_added: added_tokens,
+            total_tokens_est,
+        }));
+    }
+
+    if added_tokens > budget::MAX_CONTEXT_TOKENS {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(PrefillErrorBody {
+                error: "Session full".into(),
+                reason: "session_full".into(),
+            }),
+        ));
+    }
 
     let kv_cache_bytes = crate::model::estimate_kv_cache_bytes(&req.prompt);
 
@@ -69,8 +192,8 @@ pub async fn prefill(
             );
             return Err((
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(CapacityExceededResponse {
-                    error: "Capacity exceeded",
+                Json(PrefillErrorBody {
+                    error: "Capacity exceeded".into(),
                     reason: capacity_err.to_string(),
                 }),
             ));
@@ -88,8 +211,8 @@ pub async fn prefill(
             );
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CapacityExceededResponse {
-                    error: "Failed to create model session",
+                Json(PrefillErrorBody {
+                    error: "Failed to create model session".into(),
                     reason: e.to_string(),
                 }),
             ));
@@ -112,8 +235,8 @@ pub async fn prefill(
         );
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(CapacityExceededResponse {
-                error: "Prefill failed",
+            Json(PrefillErrorBody {
+                error: "Prefill failed".into(),
                 reason: e.to_string(),
             }),
         ));
@@ -124,7 +247,7 @@ pub async fn prefill(
         model: req.model.clone(),
         max_tokens: req.max_tokens,
         kv_cache_bytes,
-        approx_tokens: budget::estimate_tokens(&req.prompt),
+        approx_tokens: added_tokens,
         last_activity: Instant::now(),
         model_session,
     };
@@ -142,8 +265,8 @@ pub async fn prefill(
             );
             return Err((
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(CapacityExceededResponse {
-                    error: "Capacity exceeded",
+                Json(PrefillErrorBody {
+                    error: "Capacity exceeded".into(),
                     reason: capacity_err.to_string(),
                 }),
             ));
@@ -169,7 +292,11 @@ pub async fn prefill(
         "session.start"
     );
 
-    Ok(Json(PrefillResponse { status: "ok" }))
+    Ok(Json(PrefillResponse {
+        status: "ok",
+        tokens_added: added_tokens,
+        total_tokens_est: added_tokens,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -288,9 +415,7 @@ pub async fn decode(
         metrics().set_active_sessions(session_count);
     });
 
-    let stream = ReceiverStream::new(rx).map(|msg| {
-        Ok(Event::default().json_data(msg).unwrap())
-    });
+    let stream = ReceiverStream::new(rx).map(|msg| Ok(Event::default().json_data(msg).unwrap()));
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
@@ -302,7 +427,9 @@ pub struct HealthResponse {
     pub kv_cache_bytes: u64,
 }
 
-pub async fn health(State((sessions, _model_manager)): State<(Sessions, Arc<ModelManager>)>) -> Json<HealthResponse> {
+pub async fn health(
+    State((sessions, _model_manager)): State<(Sessions, Arc<ModelManager>)>,
+) -> Json<HealthResponse> {
     let sessions_read = sessions.read().await;
     let active_sessions = sessions_read.len();
     let kv_cache_bytes: u64 = sessions_read.values().map(|s| s.kv_cache_bytes).sum();
@@ -361,4 +488,57 @@ pub async fn list_sessions(
         max_sessions: MAX_SESSIONS,
         max_kv_cache_bytes: MAX_TOTAL_KV_CACHE,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn prefill_request_defaults_to_create_mode() {
+        let request: PrefillRequest = serde_json::from_value(json!({
+            "session_id": "session-1",
+            "prompt": "Hello",
+            "model": "tinyllama",
+            "max_tokens": 32
+        }))
+        .unwrap();
+
+        assert_eq!(request.mode, "create");
+    }
+
+    #[test]
+    fn prefill_response_includes_token_estimates() {
+        let response = PrefillResponse {
+            status: "ok",
+            tokens_added: 2,
+            total_tokens_est: 5,
+        };
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            json!({
+                "status": "ok",
+                "tokens_added": 2,
+                "total_tokens_est": 5
+            })
+        );
+    }
+
+    #[test]
+    fn prefill_error_uses_shared_shape() {
+        let response = PrefillErrorBody {
+            error: "Session not found".into(),
+            reason: "session_gone".into(),
+        };
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            json!({
+                "error": "Session not found",
+                "reason": "session_gone"
+            })
+        );
+    }
 }
