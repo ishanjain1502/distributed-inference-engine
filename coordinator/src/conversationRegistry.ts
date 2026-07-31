@@ -8,10 +8,6 @@ export interface ConversationEntry {
   model: string;
 }
 
-type Waiter = {
-  resolve: (release: () => void) => void;
-};
-
 export class ConversationRegistry {
   private entries = new Map<string, ConversationEntry>();
   private tails = new Map<string, Promise<void>>();
@@ -48,16 +44,24 @@ export class ConversationRegistry {
     this.tails.clear();
   }
 
+  /** @internal test-only inspection */
+  hasTail(conversationId: string): boolean {
+    return this.tails.has(conversationId);
+  }
+
   acquire(conversationId: string): Promise<() => void> {
     const prev = this.tails.get(conversationId) ?? Promise.resolve();
     let releasePrev!: () => void;
     const gate = new Promise<void>((resolve) => {
       releasePrev = resolve;
     });
-    this.tails.set(
-      conversationId,
-      prev.then(() => gate)
-    );
+    const tail = prev.then(() => gate);
+    this.tails.set(conversationId, tail);
+    tail.finally(() => {
+      if (this.tails.get(conversationId) === tail) {
+        this.tails.delete(conversationId);
+      }
+    });
 
     return prev.then(() => {
       let released = false;

@@ -55,6 +55,14 @@ describe('ConversationRegistry', () => {
     assert.equal(reg.get('c1'), undefined);
   });
 
+  it('release removes drained tail from map', async () => {
+    const release = await reg.acquire('c1');
+    assert.equal(reg.hasTail('c1'), true);
+    release();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(reg.hasTail('c1'), false);
+  });
+
   it('acquire is FIFO', async () => {
     const order = [];
     const r1 = reg.acquire('c1').then(async (release) => {
