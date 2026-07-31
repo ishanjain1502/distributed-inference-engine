@@ -443,11 +443,20 @@ pub async fn decode(
             "session.end"
         );
 
-        let sessions_read = task_sessions.read().await;
-        let total_kv: u64 = sessions_read.values().map(|s| s.kv_cache_bytes).sum();
-        let session_count = sessions_read.len() as u64;
-        metrics().set_kv_cache_bytes(total_kv);
-        metrics().set_active_sessions(session_count);
+        {
+            let mut sessions_write = task_sessions.write().await;
+            if let Some(session) = sessions_write.get_mut(&task_session_id) {
+                session.approx_tokens = session.approx_tokens.saturating_add(tokens_emitted);
+                session.kv_cache_bytes = session.kv_cache_bytes.saturating_add(
+                    crate::budget::estimate_kv_bytes_for_tokens(tokens_emitted),
+                );
+                session.touch();
+            }
+            let total_kv: u64 = sessions_write.values().map(|s| s.kv_cache_bytes).sum();
+            let session_count = sessions_write.len() as u64;
+            metrics().set_kv_cache_bytes(total_kv);
+            metrics().set_active_sessions(session_count);
+        }
     });
 
     let stream = ReceiverStream::new(rx).map(|msg| Ok(Event::default().json_data(msg).unwrap()));
