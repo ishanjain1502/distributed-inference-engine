@@ -20,18 +20,22 @@ use crate::state::{check_capacity, Session, Sessions};
 use crate::stream::TokenEmitter;
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PrefillMode {
+    #[default]
+    Create,
+    Continue,
+}
+
 #[derive(Deserialize)]
 pub struct PrefillRequest {
     pub session_id: String,
     pub prompt: String,
     pub model: String,
     pub max_tokens: u32,
-    #[serde(default = "default_prefill_mode")]
-    pub mode: String,
-}
-
-fn default_prefill_mode() -> String {
-    "create".to_string()
+    #[serde(default)]
+    pub mode: PrefillMode,
 }
 
 #[derive(Serialize)]
@@ -63,7 +67,7 @@ pub async fn prefill(
     let session_id = req.session_id.clone();
     let added_tokens = budget::estimate_tokens(&req.prompt);
 
-    if req.mode == "continue" {
+    if req.mode == PrefillMode::Continue {
         let mut sessions_write = sessions.write().await;
         let session = match sessions_write.get_mut(&session_id) {
             Some(session) => session,
@@ -88,27 +92,40 @@ pub async fn prefill(
             ));
         }
 
-        if budget::check_continue_budget(
-            session.approx_tokens,
-            session.kv_cache_bytes,
+        let reservation = match budget::reserve_continue_budget(
+            &mut session.approx_tokens,
+            &mut session.kv_cache_bytes,
             added_tokens,
             crate::state::MAX_KV_CACHE_PER_SESSION,
-        )
-        .is_err()
-        {
-            return Err((
-                StatusCode::CONFLICT,
-                Json(PrefillErrorBody {
-                    error: "Session full".into(),
-                    reason: "session_full".into(),
-                }),
-            ));
-        }
+        ) {
+            Ok(reservation) => reservation,
+            Err(_) => {
+                return Err((
+                    StatusCode::CONFLICT,
+                    Json(PrefillErrorBody {
+                        error: "Session full".into(),
+                        reason: "session_full".into(),
+                    }),
+                ));
+            }
+        };
 
         let model_session = session.model_session.clone();
         drop(sessions_write);
 
-        if let Err(e) = prefill_session(model_session, req.prompt.clone()).await {
+        if let Err(e) = prefill_session(model_session.clone(), req.prompt.clone()).await {
+            let mut sessions_write = sessions.write().await;
+            if let Some(session) = sessions_write
+                .get_mut(&session_id)
+                .filter(|session| Arc::ptr_eq(&session.model_session, &model_session))
+            {
+                budget::rollback_continue_budget(
+                    &mut session.approx_tokens,
+                    &mut session.kv_cache_bytes,
+                    reservation,
+                );
+            }
+            drop(sessions_write);
             warn!(
                 session_id = %session_id,
                 error = %e,
@@ -125,7 +142,7 @@ pub async fn prefill(
 
         let mut sessions_write = sessions.write().await;
         let session = match sessions_write.get_mut(&session_id) {
-            Some(session) => session,
+            Some(session) if Arc::ptr_eq(&session.model_session, &model_session) => session,
             None => {
                 return Err((
                     StatusCode::NOT_FOUND,
@@ -135,11 +152,16 @@ pub async fn prefill(
                     }),
                 ));
             }
+            Some(_) => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(PrefillErrorBody {
+                        error: "Session not found".into(),
+                        reason: "session_gone".into(),
+                    }),
+                ));
+            }
         };
-        session.approx_tokens = session.approx_tokens.saturating_add(added_tokens);
-        session.kv_cache_bytes = session
-            .kv_cache_bytes
-            .saturating_add(budget::estimate_kv_bytes_for_tokens(added_tokens));
         session.max_tokens = req.max_tokens;
         session.touch();
         let total_tokens_est = session.approx_tokens;
@@ -505,7 +527,22 @@ mod tests {
         }))
         .unwrap();
 
-        assert_eq!(request.mode, "create");
+        assert_eq!(request.mode, PrefillMode::Create);
+    }
+
+    #[test]
+    fn prefill_request_rejects_unknown_mode() {
+        let error = serde_json::from_value::<PrefillRequest>(json!({
+            "session_id": "session-1",
+            "prompt": "Hello",
+            "model": "tinyllama",
+            "max_tokens": 32,
+            "mode": "replace"
+        }))
+        .err()
+        .expect("unknown prefill mode should be rejected");
+
+        assert!(error.to_string().contains("unknown variant `replace`"));
     }
 
     #[test]
