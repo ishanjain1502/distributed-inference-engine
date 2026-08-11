@@ -1,2 +1,5 @@
 modelFiles/
 .env
+.superpowers/
+__pycache__/
+*.pyc

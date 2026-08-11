@@ -158,6 +158,35 @@ python test_inference.py "What is the capital of France?" 1000
 ./test_inference.sh "What is the capital of France?" 1000
 ```
 
+### Benchmark & stress
+
+Requires the coordinator and worker already running, plus:
+
+```bash
+pip install -r scripts/requirements.txt
+```
+
+Fixed-concurrency benchmark:
+
+```bash
+python scripts/bench.py --mode bench --concurrency 8 --requests 40 --max-tokens 50
+```
+
+Concurrency ramp stress (stops when reject rate hits the threshold):
+
+```bash
+python scripts/bench.py --mode stress --max-concurrency 64 --step 8 --requests-per-step 16
+```
+
+Stress runs use a unique `conversation_id` per request; the coordinator may retain them until idle expiry (~5 minutes). Back-to-back ramps can accumulate capacity pressure—wait for idle TTL or restart the coordinator between independent runs.
+
+Optional JSON output and gates:
+
+```bash
+python scripts/bench.py --mode bench --concurrency 4 --requests 20 \
+  --out results.json --fail-on error_rate=0.1,p95_ttft_ms=10000
+```
+
 ### 5. Environment variables (optional)
 
 | Variable | Where | Description |
