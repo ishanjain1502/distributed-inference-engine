@@ -178,6 +178,8 @@ Concurrency ramp stress (stops when reject rate hits the threshold):
 python scripts/bench.py --mode stress --max-concurrency 64 --step 8 --requests-per-step 16
 ```
 
+Stress runs use a unique `conversation_id` per request; the coordinator may retain them until idle expiry (~5 minutes). Back-to-back ramps can accumulate capacity pressure—wait for idle TTL or restart the coordinator between independent runs.
+
 Optional JSON output and gates:
 
 ```bash
