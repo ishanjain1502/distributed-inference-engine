@@ -23,7 +23,12 @@ def parse_fail_on(spec: str | None) -> dict[str, float]:
         key = key.strip()
         if key not in ALLOWED_GATE_KEYS:
             raise ValueError(f"unknown fail-on key: {key!r}")
-        gates[key] = float(raw.strip())
+        try:
+            gates[key] = float(raw.strip())
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid float for fail-on key {key!r}: {raw.strip()!r}"
+            ) from exc
     return gates
 
 

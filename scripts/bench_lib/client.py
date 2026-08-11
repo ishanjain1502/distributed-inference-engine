@@ -57,6 +57,7 @@ async def infer_once(
                 try:
                     await resp.aread()
                 except Exception:
+                    # Non-critical: body drain is best-effort before returning status.
                     pass
                 duration_ms = (time.perf_counter() - start) * 1000.0
                 return RequestResult(
@@ -67,15 +68,29 @@ async def infer_once(
                     error=None,
                     rejected=status == 503,
                 )
+            stream_error: str | None = None
             async for line in resp.aiter_lines():
                 data = parse_sse_data_line(line)
                 if data is None:
+                    continue
+                if "error" in data:
+                    err = data["error"]
+                    stream_error = str(err) if err is not None else "unknown error"
                     continue
                 if "token" in data:
                     tokens += 1
                     if ttft_ms is None:
                         ttft_ms = (time.perf_counter() - start) * 1000.0
             duration_ms = (time.perf_counter() - start) * 1000.0
+            if stream_error is not None:
+                return RequestResult(
+                    status=0,
+                    ttft_ms=ttft_ms,
+                    tokens=tokens,
+                    duration_ms=duration_ms,
+                    error=stream_error,
+                    rejected=False,
+                )
             return RequestResult(
                 status=200,
                 ttft_ms=ttft_ms,
@@ -86,13 +101,34 @@ async def infer_once(
             )
     except httpx.TimeoutException:
         duration_ms = (time.perf_counter() - start) * 1000.0
-        return RequestResult(0, ttft_ms, tokens, duration_ms, "timeout", False)
+        return RequestResult(
+            status=0,
+            ttft_ms=ttft_ms,
+            tokens=tokens,
+            duration_ms=duration_ms,
+            error="timeout",
+            rejected=False,
+        )
     except httpx.ConnectError as e:
         duration_ms = (time.perf_counter() - start) * 1000.0
-        return RequestResult(0, None, 0, duration_ms, f"connect: {e}", False)
+        return RequestResult(
+            status=0,
+            ttft_ms=None,
+            tokens=0,
+            duration_ms=duration_ms,
+            error=f"connect: {e}",
+            rejected=False,
+        )
     except Exception as e:
         duration_ms = (time.perf_counter() - start) * 1000.0
-        return RequestResult(0, ttft_ms, tokens, duration_ms, str(e), False)
+        return RequestResult(
+            status=0,
+            ttft_ms=ttft_ms,
+            tokens=tokens,
+            duration_ms=duration_ms,
+            error=str(e),
+            rejected=False,
+        )
 
 
 async def check_coordinator(client: httpx.AsyncClient, base_url: str) -> None:

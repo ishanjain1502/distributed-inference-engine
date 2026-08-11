@@ -118,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wall_clock_s: {wall:.3f}")
     if levels:
         print("\n=== stress levels ===")
-        knee = None
+        knee: int | None = None
+        soft_stopped = False
         for i, level in enumerate(levels):
             s = level["summary"]
             print(
@@ -129,11 +130,17 @@ def main(argv: list[str] | None = None) -> int:
                 f"agg_tps={s['aggregate_tps']}"
             )
             if s["reject_rate"] >= args.stop_reject_rate:
-                knee = level["concurrency"]
-        if knee is not None:
-            print(f"knee (first level at/above stop-reject-rate): {knee}")
+                soft_stopped = True
+                knee = levels[i - 1]["concurrency"] if i > 0 else None
+                break
+        if soft_stopped:
+            if knee is not None:
+                print(f"knee (last level before soft stop): {knee}")
+            else:
+                print("knee: soft stop at first level (no prior level)")
         elif levels:
-            print(f"knee: completed full ramp (max={levels[-1]['concurrency']})")
+            knee = levels[-1]["concurrency"]
+            print(f"knee: completed full ramp (max={knee})")
 
     print_summary("overall", summary)
 
@@ -147,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.out:
         out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"\nwrote {out_path}")
 

@@ -24,7 +24,9 @@ async def run_fixed(
     sem = asyncio.Semaphore(concurrency)
     results: list[RequestResult] = []
 
-    async with httpx.AsyncClient() as client:
+    pool_size = max(concurrency, 1) + 10
+    limits = httpx.Limits(max_connections=pool_size)
+    async with httpx.AsyncClient(limits=limits) as client:
         await check_coordinator(client, base_url)
 
         async def one() -> RequestResult:
@@ -60,7 +62,9 @@ async def run_stress(
     all_results: list[RequestResult] = []
     total_start = time.perf_counter()
 
-    async with httpx.AsyncClient() as client:
+    pool_size = max(max_concurrency, 1) + 10
+    limits = httpx.Limits(max_connections=pool_size)
+    async with httpx.AsyncClient(limits=limits) as client:
         await check_coordinator(client, base_url)
 
         for conc in concurrency_levels(step, max_concurrency):

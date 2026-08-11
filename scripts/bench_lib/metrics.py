@@ -73,14 +73,14 @@ def aggregate(results: list[RequestResult], wall_clock_s: float) -> dict[str, An
         histogram[bucket] += 1
         if r.rejected or r.status == 503:
             rejects += 1
-        if r.status != 200:
+        if r.status != 200 or r.error is not None:
             errors += 1
         if r.ttft_ms is not None:
             ttfts.append(r.ttft_ms)
         tps = per_request_tps(r)
         if tps is not None:
             tps_samples.append(tps)
-        if r.status == 200:
+        if r.status == 200 and r.error is None:
             success_tokens += r.tokens
 
     ttfts_sorted = sorted(ttfts)
