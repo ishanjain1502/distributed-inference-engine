@@ -38,6 +38,18 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
+DEFAULT_MODEL_FILENAME="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+if [ -z "${MODEL_PATH:-}" ]; then
+    export MODEL_PATH="$ROOT_DIR/modelFiles/$DEFAULT_MODEL_FILENAME"
+fi
+
+echo -e "${YELLOW}Ensuring model at $MODEL_PATH...${NC}"
+if ! bash "$ROOT_DIR/scripts/ensure_model.sh"; then
+    echo -e "${RED}Failed to ensure model file!${NC}"
+    exit 1
+fi
+echo ""
+
 # Build and start Coordinator
 echo -e "${YELLOW}[1/2] Building Coordinator...${NC}"
 cd "$ROOT_DIR/coordinator"
