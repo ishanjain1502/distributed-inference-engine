@@ -2,3 +2,6 @@ modelFiles/
 .env
 scripts/bench_lib/__pycache__/
 tests/unit/__pycache__/
+.superpowers/
+__pycache__/
+*.pyc
