@@ -73,13 +73,16 @@ cd ..
 
 **Worker:** No separate install step; `start.sh` (or `cargo build`) will compile it.
 
-### 2. Download a model (required for inference)
+### 2. Model file (auto-download or manual)
 
-The worker loads a GGUF model file. Default is **TinyLlama 1.1B**.
+On first start, `./start.sh` and Docker Compose **auto-download** TinyLlama Q4_K_M into `modelFiles/` if the file is missing (needs network + `curl` or `wget`).
 
-1. Download a TinyLlama GGUF from [TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF) (e.g. `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`).
-2. Place it in `modelFiles/` in the project root (create the folder if needed).
-3. Optional: set **`MODEL_PATH`** to the full path to your `.gguf` file if you use a different path or filename. Use **forward slashes** when setting in Git Bash (e.g. `E:/Projects/inference-engine/modelFiles/my-model.gguf`). For Docker, Compose mounts `modelFiles/` at `/models` and sets `MODEL_PATH` automatically.
+Optional overrides:
+- **`MODEL_URL`** — download URL (default: TheBloke TinyLlama Q4_K_M on [Hugging Face](https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF))
+- **`SKIP_MODEL_DOWNLOAD=1`** — never fetch; fail if the file is missing (air-gapped / CI)
+- **`MODEL_PATH`** — path to an existing `.gguf` (forward slashes in Git Bash, e.g. `E:/Projects/inference-engine/modelFiles/my-model.gguf`)
+
+You can still download manually into `modelFiles/` if you prefer; existing files are never re-fetched. For Docker, Compose mounts `modelFiles/` at `/models` (read-write) and sets `MODEL_PATH` automatically.
 
 ### 3. Run the system
 
@@ -116,7 +119,7 @@ cargo run
 
 **Option C – Docker Compose (recommended for portable demos):**
 
-Prerequisites: [Docker](https://docs.docker.com/get-docker/) with Compose v2, and a TinyLlama GGUF in `modelFiles/` (same as above).
+Prerequisites: [Docker](https://docs.docker.com/get-docker/) with Compose v2. An empty `modelFiles/` is fine on first run — the worker entrypoint downloads the default GGUF into the mounted volume (may take several minutes). The volume is read-write so the file persists on the host.
 
 ```bash
 docker compose up --build
@@ -124,7 +127,7 @@ docker compose up --build
 
 Open the UI at [http://localhost:1337](http://localhost:1337). Press `Ctrl+C` to stop (or `docker compose down` if detached).
 
-Only the coordinator port (`1337`) is published. The worker is reachable on the Compose network as `http://worker:3001`. Override the model with `MODEL_PATH` in `docker-compose.yml` or a Compose `.env` if you use a different filename under `modelFiles/`.
+Only the coordinator port (`1337`) is published. The worker is reachable on the Compose network as `http://worker:3001`. Override the model with `MODEL_PATH` / `MODEL_URL` in `docker-compose.yml` or a Compose `.env` if you use a different file or URL.
 
 ### 4. Test the API
 
@@ -191,7 +194,9 @@ python scripts/bench.py --mode bench --concurrency 4 --requests 20 \
 
 | Variable | Where | Description |
 |----------|--------|-------------|
-| `MODEL_PATH` | Worker | Path to GGUF model file. Use forward slashes in Git Bash. Default: `/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` |
+| `MODEL_PATH` | Worker / ensure | Path to GGUF model file. Use forward slashes in Git Bash. `start.sh` defaults to `$ROOT/modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`; Docker default: `/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` |
+| `MODEL_URL` | Worker / ensure | Override GGUF download URL (default: TheBloke TinyLlama Q4_K_M) |
+| `SKIP_MODEL_DOWNLOAD` | Worker / ensure | Set to `1` to disable auto-download |
 | `LIBCLANG_PATH` | Worker build (Windows) | LLVM `bin` directory (for libclang), e.g. `C:\Program Files\LLVM\bin`. |
 | `NM_PATH` | Worker build (Windows) | Full path to `llvm-nm.exe`. Can be derived from `LIBCLANG_PATH` (see `start.sh`). |
 | `OBJCOPY_PATH` | Worker build (Windows) | Full path to `llvm-objcopy.exe`, e.g. `C:\Program Files\LLVM\bin\llvm-objcopy.exe`. |
@@ -307,7 +312,9 @@ Environment variables (optional):
 ### Worker
 
 Environment variables:
-- `MODEL_PATH` - Path to GGUF model file. Use **forward slashes** (e.g. `E:/path/to/model.gguf`) when setting in Git Bash. Default: `/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` (native/`start.sh` users should set this to their host path)
+- `MODEL_PATH` - Path to GGUF model file. Use **forward slashes** (e.g. `E:/path/to/model.gguf`) when setting in Git Bash. `start.sh` defaults to `$ROOT/modelFiles/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`; Docker/Compose default: `/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf`
+- `MODEL_URL` - Override GGUF download URL when auto-download runs
+- `SKIP_MODEL_DOWNLOAD` - Set to `1` to disable auto-download (fail if file missing)
 
 **Supported models:** The worker uses the `llama_cpp` Rust crate (v0.3), which bundles llama.cpp. Default is **TinyLlama 1.1B** (TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF); use any quant e.g. `Q4_K_M.gguf`. Other supported architectures include Llama, Gemma 2, Phi, Mistral, etc. Gemma 3 is not yet supported by the bundled llama.cpp.
 - `WORKER_ID` - Unique identifier (default: `worker-1`)

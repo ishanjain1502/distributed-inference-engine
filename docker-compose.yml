@@ -20,18 +20,20 @@ services:
 
   worker:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: worker/Dockerfile
     environment:
       WORKER_ID: worker-1
       WORKER_URL: http://worker:3001
       COORDINATOR_URL: http://coordinator:1337
       MODEL_PATH: /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+      MODEL_URL: ${MODEL_URL:-}
+      SKIP_MODEL_DOWNLOAD: ${SKIP_MODEL_DOWNLOAD:-0}
     volumes:
-      - ./modelFiles:/models:ro
+      - ./modelFiles:/models
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/worker/health"]
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 60s
+      start_period: 120s
