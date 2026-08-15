@@ -127,7 +127,11 @@ docker compose up --build
 
 Open the UI at [http://localhost:1337](http://localhost:1337). Press `Ctrl+C` to stop (or `docker compose down` if detached).
 
-Only the coordinator port (`1337`) is published. The worker is reachable on the Compose network as `http://worker:3001`. Override the model with `MODEL_PATH` / `MODEL_URL` in `docker-compose.yml` or a Compose `.env` if you use a different file or URL.
+Only the coordinator port (`1337`) is published. Compose starts **two workers** (`worker-1`, `worker-2`) with unique heartbeat IDs and URLs (`http://worker-1:3001`, `http://worker-2:3001`) so the coordinator can pin sessions and fail over if one process dies. Both containers use `restart: unless-stopped`.
+
+Do **not** run `docker compose up --scale worker=2`: a shared service name would collide on `WORKER_ID` / `WORKER_URL`. To add a replica, copy a `worker-N` service block, give it a new `WORKER_ID` and `WORKER_URL`, and list it under the coordinator's `depends_on`. Each worker loads its own copy of the model — RAM scales with N.
+
+Override the model with `MODEL_PATH` / `MODEL_URL` in `docker-compose.yml` or a Compose `.env` if you use a different file or URL.
 
 ### 4. Test the API
 
@@ -140,9 +144,10 @@ Only the coordinator port (`1337`) is published. The worker is reachable on the 
 **Health checks:**
 ```bash
 curl http://localhost:1337/coordinator/health
-curl http://localhost:3001/worker/health
 curl http://localhost:1337/coordinator/health/workers
 ```
+
+Worker ports are not published; the workers list should show `worker-1` and `worker-2` alive after heartbeats. With `start.sh` (single local worker), `curl http://localhost:3001/worker/health` still works.
 
 **Streaming inference (curl):**
 ```bash

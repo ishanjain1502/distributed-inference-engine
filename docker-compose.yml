@@ -1,15 +1,38 @@
+x-worker-base: &worker-base
+  build:
+    context: .
+    dockerfile: worker/Dockerfile
+  restart: unless-stopped
+  volumes:
+    - ./modelFiles:/models
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/worker/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 120s
+
+x-worker-env: &worker-env
+  COORDINATOR_URL: http://coordinator:1337
+  MODEL_PATH: /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+  MODEL_URL: ${MODEL_URL:-}
+  SKIP_MODEL_DOWNLOAD: ${SKIP_MODEL_DOWNLOAD:-0}
+
 services:
   coordinator:
     build:
       context: .
       dockerfile: coordinator/Dockerfile
+    restart: unless-stopped
     ports:
       - "1337:1337"
     environment:
       HOST: "0.0.0.0"
       PORT: "1337"
     depends_on:
-      worker:
+      worker-1:
+        condition: service_healthy
+      worker-2:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:1337/coordinator/health"]
@@ -18,22 +41,19 @@ services:
       retries: 6
       start_period: 10s
 
-  worker:
-    build:
-      context: .
-      dockerfile: worker/Dockerfile
+  worker-1:
+    <<: *worker-base
     environment:
+      <<: *worker-env
       WORKER_ID: worker-1
-      WORKER_URL: http://worker:3001
-      COORDINATOR_URL: http://coordinator:1337
-      MODEL_PATH: /models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
-      MODEL_URL: ${MODEL_URL:-}
-      SKIP_MODEL_DOWNLOAD: ${SKIP_MODEL_DOWNLOAD:-0}
-    volumes:
-      - ./modelFiles:/models
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/worker/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 120s
+      WORKER_URL: http://worker-1:3001
+
+  worker-2:
+    <<: *worker-base
+    environment:
+      <<: *worker-env
+      WORKER_ID: worker-2
+      WORKER_URL: http://worker-2:3001
+    depends_on:
+      worker-1:
+        condition: service_healthy
