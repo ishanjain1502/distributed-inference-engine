@@ -24,7 +24,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/worker-bin /usr/local/bin/worker
 COPY scripts/ensure_model.sh scripts/worker-entrypoint.sh /app/scripts/
-RUN chmod +x /app/scripts/ensure_model.sh /app/scripts/worker-entrypoint.sh
+RUN sed -i 's/\r$//' /app/scripts/*.sh && chmod +x /app/scripts/*.sh
 EXPOSE 3001
 ENTRYPOINT ["/app/scripts/worker-entrypoint.sh"]
 CMD ["worker"]

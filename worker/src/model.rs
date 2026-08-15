@@ -7,6 +7,26 @@ use llama_cpp::{
 };
 use tracing::info;
 
+/// Thread count for llama.cpp sessions.
+///
+/// `SessionParams::default()` uses `num_cpus::get_physical() - 1`, which is 0 in
+/// Docker when the container reports a single physical CPU — triggering
+/// `GGML_ASSERT(n_threads > 0)` during prefill.
+fn inference_threads() -> u32 {
+    std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(4)
+        .max(1)
+}
+
+fn default_session_params() -> SessionParams {
+    let mut params = SessionParams::default();
+    let threads = inference_threads();
+    params.n_threads = threads;
+    params.n_threads_batch = threads;
+    params
+}
+
 /// Global model instance shared across all sessions
 pub struct ModelManager {
     model: Arc<LlamaModel>,
@@ -42,7 +62,7 @@ impl ModelManager {
     /// Create a new session for inference
     /// Returns a Mutex-wrapped session since LlamaSession may not be Send/Sync
     pub fn create_session(&self) -> Result<Arc<Mutex<LlamaSession>>> {
-        let session_params = SessionParams::default();
+        let session_params = default_session_params();
         let session = self.model
             .create_session(session_params)
             .context("Failed to create model session")?;
@@ -125,4 +145,21 @@ pub async fn generate_tokens(
     .await
     .context("Token generation task panicked")?
     .context("Token generation failed")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inference_threads_is_at_least_one() {
+        assert!(inference_threads() >= 1);
+    }
+
+    #[test]
+    fn default_session_params_sets_positive_thread_count() {
+        let params = default_session_params();
+        assert!(params.n_threads >= 1);
+        assert!(params.n_threads_batch >= 1);
+    }
 }
