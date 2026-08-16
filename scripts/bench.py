@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Benchmark and stress-test the inference coordinator.
+"""Benchmark, stress-test, and capacity-probe the inference coordinator.
 
 Usage:
   python scripts/bench.py --mode bench --concurrency 4 --requests 20
   python scripts/bench.py --mode stress --max-concurrency 32 --step 4
+  python scripts/bench.py --mode capacity --max-concurrency 32 --cooldown-s 300
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from pathlib import Path
 # Allow `python scripts/bench.py` without installing a package
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from bench_lib.capacity import CapacityThresholds, print_capacity_report, run_capacity
 from bench_lib.gates import evaluate_gates, parse_fail_on
 from bench_lib.metrics import RequestResult, aggregate
 from bench_lib.runner import run_fixed, run_stress
@@ -26,8 +28,8 @@ DEFAULT_PROMPT = "Write one short sentence about the ocean."
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Inference engine bench/stress tool")
-    p.add_argument("--mode", choices=("bench", "stress"), required=True)
+    p = argparse.ArgumentParser(description="Inference engine bench/stress/capacity tool")
+    p.add_argument("--mode", choices=("bench", "stress", "capacity"), required=True)
     p.add_argument("--base-url", default="http://localhost:1337")
     p.add_argument("--model", default="tinyllama-1.1b")
     p.add_argument("--prompt", default=DEFAULT_PROMPT)
@@ -41,11 +43,24 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--concurrency", type=int, default=4)
     p.add_argument("--requests", type=int, default=20)
 
-    # stress
+    # stress + capacity (shared ramp flags)
     p.add_argument("--max-concurrency", type=int, default=32)
     p.add_argument("--step", type=int, default=4)
     p.add_argument("--requests-per-step", type=int, default=16)
     p.add_argument("--stop-reject-rate", type=float, default=0.5)
+
+    # capacity
+    p.add_argument("--coarse-step", type=int, default=4)
+    p.add_argument("--refine-step", type=int, default=1)
+    p.add_argument("--requests-per-level", type=int, default=16)
+    p.add_argument("--refine-repeats", type=int, default=3)
+    p.add_argument("--cooldown-s", type=float, default=0.0)
+    p.add_argument("--stats-poll-interval-s", type=float, default=2.0)
+    p.add_argument("--reject-rate-admission", type=float, default=0.10)
+    p.add_argument("--max-error-rate", type=float, default=0.05)
+    p.add_argument("--max-p95-ttft-ms", type=float, default=30_000.0)
+    p.add_argument("--max-reject-rate-slo", type=float, default=0.01)
+    p.add_argument("--capacity-pct-threshold", type=float, default=90.0)
     return p
 
 
@@ -69,15 +84,56 @@ def print_summary(title: str, summary: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    prompt = resolve_prompt(args)
+    config = {k: getattr(args, k) for k in vars(args)}
+    config["prompt"] = prompt
+
+    if args.mode == "capacity":
+        thresholds = CapacityThresholds(
+            reject_rate_admission=args.reject_rate_admission,
+            max_error_rate=args.max_error_rate,
+            max_p95_ttft_ms=args.max_p95_ttft_ms,
+            max_reject_rate_slo=args.max_reject_rate_slo,
+            capacity_pct_threshold=args.capacity_pct_threshold,
+        )
+        try:
+            payload = asyncio.run(
+                run_capacity(
+                    base_url=args.base_url,
+                    prompt=prompt,
+                    model=args.model,
+                    max_tokens=args.max_tokens,
+                    timeout_s=args.timeout_s,
+                    max_concurrency=args.max_concurrency,
+                    coarse_step=args.coarse_step,
+                    refine_step=args.refine_step,
+                    requests_per_level=args.requests_per_level,
+                    refine_repeats=args.refine_repeats,
+                    cooldown_s=args.cooldown_s,
+                    stats_poll_interval_s=args.stats_poll_interval_s,
+                    thresholds=thresholds,
+                )
+            )
+        except RuntimeError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+
+        print_capacity_report(payload)
+        payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+        payload["config"] = config
+        if args.out:
+            out_path = Path(args.out)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            print(f"\nwrote {out_path}")
+        return 0
+
     try:
         gates = parse_fail_on(args.fail_on)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
-    prompt = resolve_prompt(args)
-    config = {k: getattr(args, k) for k in vars(args)}
-    config["prompt"] = prompt
     levels: list[dict] = []
     results: list[RequestResult]
     wall: float
