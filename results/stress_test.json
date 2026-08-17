@@ -1,0 +1,490 @@
+{
+    "timestamp": "2026-08-15T14:51:39.658431+00:00",
+    "mode": "stress",
+    "config": {
+      "mode": "stress",
+      "base_url": "http://localhost:1337",
+      "model": "tinyllama-1.1b",
+      "prompt": "Write one short sentence about the ocean.",
+      "prompt_file": null,
+      "max_tokens": 100,
+      "timeout_s": 300.0,
+      "out": "results/stress-vultr_2.json",
+      "fail_on": null,
+      "concurrency": 4,
+      "requests": 20,
+      "max_concurrency": 6,
+      "step": 2,
+      "requests_per_step": 16,
+      "stop_reject_rate": 0.5
+    },
+    "summary": {
+      "attempts": 48,
+      "histogram": {
+        "200": 44,
+        "503": 0,
+        "502": 0,
+        "409": 0,
+        "4xx": 0,
+        "other": 0,
+        "client_error": 4
+      },
+      "ttft_p50_ms": 11549.50735499915,
+      "ttft_p95_ms": 158237.51917400112,
+      "mean_tokens_per_s": 7255.416649872806,
+      "aggregate_tps": 0.8081394706036832,
+      "error_rate": 0.08333333333333333,
+      "reject_rate": 0.0
+    },
+    "levels": [
+      {
+        "concurrency": 2,
+        "summary": {
+          "attempts": 16,
+          "histogram": {
+            "200": 16,
+            "503": 0,
+            "502": 0,
+            "409": 0,
+            "4xx": 0,
+            "other": 0,
+            "client_error": 0
+          },
+          "ttft_p50_ms": 6312.061307999102,
+          "ttft_p95_ms": 158237.51917400112,
+          "mean_tokens_per_s": 7976.698643402774,
+          "aggregate_tps": 1.3291312126853214,
+          "error_rate": 0.0,
+          "reject_rate": 0.0
+        }
+      },
+      {
+        "concurrency": 4,
+        "summary": {
+          "attempts": 16,
+          "histogram": {
+            "200": 12,
+            "503": 0,
+            "502": 0,
+            "409": 0,
+            "4xx": 0,
+            "other": 0,
+            "client_error": 4
+          },
+          "ttft_p50_ms": 13944.143355000051,
+          "ttft_p95_ms": 66354.41295400051,
+          "mean_tokens_per_s": 7124.42587175399,
+          "aggregate_tps": 0.07084633049200552,
+          "error_rate": 0.25,
+          "reject_rate": 0.0
+        }
+      },
+      {
+        "concurrency": 6,
+        "summary": {
+          "attempts": 16,
+          "histogram": {
+            "200": 16,
+            "503": 0,
+            "502": 0,
+            "409": 0,
+            "4xx": 0,
+            "other": 0,
+            "client_error": 0
+          },
+          "ttft_p50_ms": 10752.83205499909,
+          "ttft_p95_ms": 190050.28181299893,
+          "mean_tokens_per_s": 5856.5162555191455,
+          "aggregate_tps": 1.5541296597610403,
+          "error_rate": 0.0,
+          "reject_rate": 0.0
+        }
+      }
+    ],
+    "requests": [
+      {
+        "status": 200,
+        "ttft_ms": 51794.51566999887,
+        "tokens": 34,
+        "duration_ms": 51812.254452999696,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 52107.013822000226,
+        "tokens": 34,
+        "duration_ms": 52108.246716001304,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 8302.132580000034,
+        "tokens": 1,
+        "duration_ms": 8303.171916999418,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 10444.67088500096,
+        "tokens": 1,
+        "duration_ms": 10445.503860000827,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 43574.17562000046,
+        "tokens": 48,
+        "duration_ms": 43583.59228900008,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 50487.01423300008,
+        "tokens": 62,
+        "duration_ms": 50496.66040699958,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 2313.6531459986145,
+        "tokens": 1,
+        "duration_ms": 2314.4922489991586,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 2034.7323950009013,
+        "tokens": 1,
+        "duration_ms": 2035.547483999835,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 2381.558106999364,
+        "tokens": 1,
+        "duration_ms": 2386.27483900018,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 2252.657099999851,
+        "tokens": 1,
+        "duration_ms": 2254.2110649992537,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 6019.783432000622,
+        "tokens": 1,
+        "duration_ms": 6020.534373999908,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 6312.061307999102,
+        "tokens": 1,
+        "duration_ms": 6313.067600998693,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 1911.964500999602,
+        "tokens": 1,
+        "duration_ms": 1912.9517279998254,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 158237.51917400112,
+        "tokens": 96,
+        "duration_ms": 158263.19495000097,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 4332.503845000247,
+        "tokens": 1,
+        "duration_ms": 4333.331292000366,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 153399.94464300072,
+        "tokens": 86,
+        "duration_ms": 153420.09310399953,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 300102.66341100034,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 300102.18351200095,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 300101.9893249995,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 300101.78419299884,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 16574.779227999898,
+        "tokens": 1,
+        "duration_ms": 16575.978475999364,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 13944.143355000051,
+        "tokens": 1,
+        "duration_ms": 13945.078950000607,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 12643.159860001106,
+        "tokens": 1,
+        "duration_ms": 12644.063621000896,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 16629.881598000793,
+        "tokens": 1,
+        "duration_ms": 16630.55190799969,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 4564.165035999395,
+        "tokens": 1,
+        "duration_ms": 4565.440698999737,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 19590.323135998915,
+        "tokens": 1,
+        "duration_ms": 19591.59097799966,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 18800.90326899881,
+        "tokens": 1,
+        "duration_ms": 18801.540954000302,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 10529.379499999777,
+        "tokens": 1,
+        "duration_ms": 10530.284923999716,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 11549.50735499915,
+        "tokens": 1,
+        "duration_ms": 11550.81459199937,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 15299.01769999924,
+        "tokens": 1,
+        "duration_ms": 15300.08434499905,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 66354.41295400051,
+        "tokens": 17,
+        "duration_ms": 66356.65874900042,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 8985.924131000502,
+        "tokens": 1,
+        "duration_ms": 8986.722448000364,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 12258.912960000089,
+        "tokens": 1,
+        "duration_ms": 12259.916598999553,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 6162.601726999128,
+        "tokens": 1,
+        "duration_ms": 6163.631991999864,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 9681.095936999554,
+        "tokens": 1,
+        "duration_ms": 9681.708718999289,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 8464.452420999805,
+        "tokens": 1,
+        "duration_ms": 8465.359215999342,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 10752.83205499909,
+        "tokens": 1,
+        "duration_ms": 10753.456242000539,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 14028.701485000056,
+        "tokens": 1,
+        "duration_ms": 14029.808585000865,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 190050.28181299893,
+        "tokens": 96,
+        "duration_ms": 190086.89304799918,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 11995.5767499996,
+        "tokens": 1,
+        "duration_ms": 11996.906485999716,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 6663.5032539998065,
+        "tokens": 1,
+        "duration_ms": 6664.584678999745,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 17395.01304100122,
+        "tokens": 1,
+        "duration_ms": 17395.61898300053,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 10540.877515999455,
+        "tokens": 1,
+        "duration_ms": 10541.988611999841,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 16843.080098000428,
+        "tokens": 1,
+        "duration_ms": 16843.720508000843,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 174307.3041000007,
+        "tokens": 100,
+        "duration_ms": 174316.46123999963,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 1244.6162719988934,
+        "tokens": 1,
+        "duration_ms": 1245.94519799939,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 9376.783165000234,
+        "tokens": 1,
+        "duration_ms": 9377.440677999402,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 56765.28662799865,
+        "tokens": 96,
+        "duration_ms": 56788.104072998976,
+        "error": null,
+        "rejected": false
+      }
+    ]
+  }

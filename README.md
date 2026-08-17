@@ -517,6 +517,6 @@ Contributions welcome! Please read the architecture documentation before making 
 
 **Core Concepts:** KV cache management, session lifecycle, admission control, worker scheduling, backpressure, heartbeat monitoring, failure recovery.
 
-**Current State:** Infrastructure layer complete; LLM model integration pending.
+**Current State:** Infrastructure layer complete; LLM model integration completed. Next steps would be to have failing request getting readmitted with some summary of sort and implimentation of other optimization techniques
 
 **Related Documentation:** See `docs/` directory for detailed architecture, failure modes, streaming, and component-specific documentation.
