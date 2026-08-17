@@ -1,0 +1,227 @@
+{
+  "mode": "capacity",
+  "capacity": {
+    "admission_concurrency": 4,
+    "slo_concurrency": null,
+    "physical_concurrency": 4,
+    "admission_found": false,
+    "notes": []
+  },
+  "thresholds": {
+    "reject_rate_admission": 0.1,
+    "max_error_rate": 0.05,
+    "max_p95_ttft_ms": 30000.0,
+    "max_reject_rate_slo": 0.01,
+    "capacity_pct_threshold": 90.0,
+    "physical_error_rate_heuristic": 0.25
+  },
+  "workload": {
+    "model": "tinyllama-1.1b",
+    "prompt_sha256": "67bbed3b4db5d641e7e38279a45bd9f2342e3ad12549c0280bba50726629d9a0",
+    "max_tokens": 100,
+    "timeout_s": 300.0
+  },
+  "environment": {
+    "os": "Linux",
+    "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
+    "python_version": "3.10.12",
+    "cpu": "x86_64",
+    "ram_gb": 7.75,
+    "worker_count": null,
+    "alive_worker_count": null,
+    "git_sha": "0b790963dff5404557da9dc9c67810f4f075b61c"
+  },
+  "phases": {
+    "coarse": [
+      {
+        "concurrency": 4,
+        "runs": 1,
+        "wall_clock_s": 151.9776270249995,
+        "summary": {
+          "attempts": 16,
+          "histogram": {
+            "200": 16,
+            "503": 0,
+            "502": 0,
+            "409": 0,
+            "4xx": 0,
+            "other": 0,
+            "client_error": 0
+          },
+          "ttft_p50_ms": 9138.07071400015,
+          "ttft_p95_ms": 118666.89528000052,
+          "mean_tokens_per_s": 21715.98346176977,
+          "aggregate_tps": 1.3291430058107967,
+          "error_rate": 0.0,
+          "reject_rate": 0.0
+        },
+        "stats_peaks": {
+          "max_session_capacity_pct": 1.6,
+          "max_kv_cache_capacity_pct": 0.0019550323486328125
+        }
+      }
+    ],
+    "refine": [],
+    "coarse_stopped_early": true
+  },
+  "tweet_line": "CAPACITY slo=none admission=4 physical=4 (7GB CPU, workers, tinyllama-1.1b)",
+  "requests": [
+    {
+      "status": 200,
+      "ttft_ms": 9138.07071400015,
+      "tokens": 1,
+      "duration_ms": 9138.531118999708,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 4117.960822999976,
+      "tokens": 1,
+      "duration_ms": 4118.4148279999135,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 3998.7397180002517,
+      "tokens": 1,
+      "duration_ms": 3999.1773609999655,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 5772.8384189999815,
+      "tokens": 1,
+      "duration_ms": 5773.317487999975,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 11953.81821700039,
+      "tokens": 1,
+      "duration_ms": 11954.483585000162,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 72889.43614600021,
+      "tokens": 74,
+      "duration_ms": 72890.97128100002,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 12819.371435999983,
+      "tokens": 1,
+      "duration_ms": 12820.01607500024,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 1225.7815230000233,
+      "tokens": 1,
+      "duration_ms": 1226.3503459998901,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 1592.6848649996828,
+      "tokens": 1,
+      "duration_ms": 1593.368547999944,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 1204.6542339999178,
+      "tokens": 1,
+      "duration_ms": 1205.3158649996476,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 91058.30639099941,
+      "tokens": 30,
+      "duration_ms": 91059.63124300024,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 17351.669915000002,
+      "tokens": 1,
+      "duration_ms": 17352.30940600013,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 15331.485143999998,
+      "tokens": 1,
+      "duration_ms": 15332.15114199993,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 118666.89528000052,
+      "tokens": 43,
+      "duration_ms": 118670.70971099974,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 117572.01478700017,
+      "tokens": 43,
+      "duration_ms": 117578.56596699958,
+      "error": null,
+      "rejected": false
+    },
+    {
+      "status": 200,
+      "ttft_ms": 4023.902084999918,
+      "tokens": 1,
+      "duration_ms": 4024.542967999878,
+      "error": null,
+      "rejected": false
+    }
+  ],
+  "timestamp": "2026-08-17T04:33:58.889872+00:00",
+  "config": {
+    "mode": "capacity",
+    "base_url": "http://localhost:1337",
+    "model": "tinyllama-1.1b",
+    "prompt": "Write one short sentence about the ocean.",
+    "prompt_file": null,
+    "max_tokens": 100,
+    "timeout_s": 300.0,
+    "out": "results/capacity.json",
+    "fail_on": null,
+    "concurrency": 4,
+    "requests": 20,
+    "max_concurrency": 32,
+    "step": 4,
+    "requests_per_step": 16,
+    "stop_reject_rate": 0.5,
+    "coarse_step": 4,
+    "refine_step": 1,
+    "requests_per_level": 16,
+    "refine_repeats": 3,
+    "cooldown_s": 300.0,
+    "stats_poll_interval_s": 2.0,
+    "reject_rate_admission": 0.1,
+    "max_error_rate": 0.05,
+    "max_p95_ttft_ms": 30000.0,
+    "max_reject_rate_slo": 0.01,
+    "capacity_pct_threshold": 90.0
+  }
+}

@@ -200,6 +200,19 @@ python scripts/bench.py --mode capacity \
 
 Use `--cooldown-s 300` for published benchmarks so sessions expire between levels; `0` is fine for quick dev probes. The run prints admission, SLO, and physical concurrency plus a one-line summary suitable for sharing.
 
+#### Results (17 August 2026)
+
+Single QEMU VM, AMD EPYC-Turin, 8GB RAM, CPU-only (no GPU).
+Model: `tinyllama-1.1b-chat-v1.0.Q4_K_M`. Prompt: “Write one short sentence about the ocean.” `max_tokens=100`.
+
+| Concurrent | Requests | Success | Rejected | Median wait | Slowest wait | Throughput |
+|------------|----------|---------|----------|-------------|--------------|------------|
+| 4 | 16 | 16/16 | 0 | 9.1s | ~119s | ~1.3 tok/s |
+
+The probe stopped at this first level: wait time already missed a 30s first-token budget, so higher concurrency was not run. The server never rejected a request and barely used session/KV headroom — the limiter was CPU, not “full.”
+
+Raw report: `results/capacity.json`.
+
 Optional JSON output and gates:
 
 ```bash
