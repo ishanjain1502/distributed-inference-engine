@@ -16,6 +16,7 @@ from bench_lib.capacity import (  # noqa: E402
     physical_fail,
     physical_fail_heuristic,
     physical_pass,
+    print_capacity_report,
     refine_band,
     refine_levels,
     slo_fail,
@@ -152,3 +153,16 @@ def test_format_tweet_line():
     assert "admission=none" in line
     assert "physical=6" in line
     assert "8GB" in line
+
+
+def test_print_capacity_report_includes_tweet_line(capsys):
+    payload = {
+        "environment": {"cpu": "test-cpu", "alive_worker_count": 2},
+        "thresholds": {},
+        "phases": {"coarse": [], "refine": []},
+        "capacity": {"notes": []},
+        "tweet_line": "CAPACITY slo=4 admission=none physical=6",
+    }
+    print_capacity_report(payload)
+    captured = capsys.readouterr()
+    assert "CAPACITY slo=4" in captured.out

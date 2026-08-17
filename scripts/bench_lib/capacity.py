@@ -478,4 +478,6 @@ def print_capacity_report(payload: dict[str, Any]) -> None:
     )
     for note in cap.get("notes", []):
         print(f"  note: {note}")
-    print(f"\n{tweet_line}")
+    tweet_line = payload.get("tweet_line", "")
+    if tweet_line:
+        print(f"\n{tweet_line}")
