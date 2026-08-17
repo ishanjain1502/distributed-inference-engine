@@ -188,6 +188,31 @@ python scripts/bench.py --mode stress --max-concurrency 64 --step 8 --requests-p
 
 Stress runs use a unique `conversation_id` per request; the coordinator may retain them until idle expiry (~5 minutes). Back-to-back ramps can accumulate capacity pressure—wait for idle TTL or restart the coordinator between independent runs.
 
+Capacity probe (admission + SLO + physical limits):
+
+```bash
+python scripts/bench.py --mode capacity \
+  --max-concurrency 32 --coarse-step 4 --requests-per-level 16 \
+  --max-tokens 100 --timeout-s 300 \
+  --cooldown-s 300 \
+  --out results/capacity.json
+```
+
+Use `--cooldown-s 300` for published benchmarks so sessions expire between levels; `0` is fine for quick dev probes. The run prints admission, SLO, and physical concurrency plus a one-line summary suitable for sharing.
+
+#### Results (17 August 2026)
+
+Single QEMU VM, AMD EPYC-Turin, 8GB RAM, CPU-only (no GPU).
+Model: `tinyllama-1.1b-chat-v1.0.Q4_K_M`. Prompt: “Write one short sentence about the ocean.” `max_tokens=100`.
+
+| Concurrent | Requests | Success | Rejected | Median wait | Slowest wait | Throughput |
+|------------|----------|---------|----------|-------------|--------------|------------|
+| 4 | 16 | 16/16 | 0 | 9.1s | ~119s | ~1.3 tok/s |
+
+The probe stopped at this first level: wait time already missed a 30s first-token budget, so higher concurrency was not run. The server never rejected a request and barely used session/KV headroom — the limiter was CPU, not “full.”
+
+Raw report: `results/capacity.json`.
+
 Optional JSON output and gates:
 
 ```bash

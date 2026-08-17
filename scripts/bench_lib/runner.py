@@ -20,28 +20,37 @@ async def run_fixed(
     timeout_s: float,
     concurrency: int,
     requests: int,
+    client: httpx.AsyncClient | None = None,
 ) -> tuple[list[RequestResult], float]:
     sem = asyncio.Semaphore(concurrency)
     results: list[RequestResult] = []
 
+    async def one(shared_client: httpx.AsyncClient) -> RequestResult:
+        async with sem:
+            return await infer_once(
+                shared_client,
+                base_url=base_url,
+                prompt=prompt,
+                model=model,
+                max_tokens=max_tokens,
+                timeout_s=timeout_s,
+            )
+
+    if client is not None:
+        wall_start = time.perf_counter()
+        results = list(await asyncio.gather(*[one(client) for _ in range(requests)]))
+        wall_clock_s = time.perf_counter() - wall_start
+        return results, wall_clock_s
+
     pool_size = max(concurrency, 1) + 10
     limits = httpx.Limits(max_connections=pool_size)
-    async with httpx.AsyncClient(limits=limits) as client:
-        await check_coordinator(client, base_url)
-
-        async def one() -> RequestResult:
-            async with sem:
-                return await infer_once(
-                    client,
-                    base_url=base_url,
-                    prompt=prompt,
-                    model=model,
-                    max_tokens=max_tokens,
-                    timeout_s=timeout_s,
-                )
+    async with httpx.AsyncClient(limits=limits) as owned_client:
+        await check_coordinator(owned_client, base_url)
 
         wall_start = time.perf_counter()
-        results = list(await asyncio.gather(*[one() for _ in range(requests)]))
+        results = list(
+            await asyncio.gather(*[one(owned_client) for _ in range(requests)])
+        )
         wall_clock_s = time.perf_counter() - wall_start
     return results, wall_clock_s
 
