@@ -16,6 +16,7 @@ import { healthTable } from './healthTable';
 import { streamMetrics } from './streamMetrics';
 import { sessionTracker } from './sessionTracker';
 import { conversationRegistry } from './conversationRegistry';
+import { decodeTracker } from './decodeTracker';
 
 const MAX_PREFILL_RETRIES = 2;
 const STREAM_CONFIG = DEFAULT_STREAM_CONFIG;
@@ -109,6 +110,28 @@ function sendReset(res: Response, reason: 'session_full' | 'session_gone', reque
   });
 }
 
+function sendDecodeCapacityReject(
+  res: Response,
+  reason: string,
+  requestId: string,
+  workerId?: string
+): void {
+  console.warn(
+    JSON.stringify({
+      event: 'infer.decode_capacity_reject',
+      request_id: requestId,
+      reason,
+      worker_id: workerId ?? null,
+      in_flight_decodes: decodeTracker.getTotal(),
+    })
+  );
+  res.status(503).json({
+    error: 'System at capacity',
+    reason,
+    request_id: requestId,
+  });
+}
+
 router.post('/', async (req: Request, res: Response) => {
   const body = req.body as InferRequest;
   const requestId = uuidv4();
@@ -145,6 +168,12 @@ router.post('/', async (req: Request, res: Response) => {
         conversationRegistry.delete(body.conversation_id);
         sessionTracker.sessionEnd(entry.sessionId);
         sendReset(res, 'session_gone', requestId);
+        return;
+      }
+
+      const decodeAdmission = decodeTracker.canAccept(worker.id);
+      if (decodeAdmission.canAccept === false) {
+        sendDecodeCapacityReject(res, decodeAdmission.reason, requestId, worker.id);
         return;
       }
 
@@ -294,8 +323,7 @@ router.post('/', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    streamMetrics.sessionStart(sessionId, selectedWorker.id);
-
+    let decodeStarted = false;
     try {
       const decodeRes = await fetch(`${selectedWorker.url}/worker/decode`, {
         method: 'POST',
@@ -309,7 +337,6 @@ router.post('/', async (req: Request, res: Response) => {
       if (!decodeRes.ok || !decodeRes.body) {
         conversationRegistry.delete(body.conversation_id);
         sessionTracker.sessionEnd(sessionId);
-        streamMetrics.sessionEnd(sessionId, 'worker_error');
         if (!res.writableEnded) {
           res.write(`data: ${JSON.stringify({ error: 'Worker decode failed' })}\n\n`);
           res.end();
@@ -317,12 +344,19 @@ router.post('/', async (req: Request, res: Response) => {
         return;
       }
 
+      decodeTracker.decodeStart(sessionId, selectedWorker.id);
+      streamMetrics.sessionStart(sessionId, selectedWorker.id);
+      decodeStarted = true;
+
       // Stream tokens from worker to client with bounded buffer and write deadlines
       await streamTokensToClient(body.conversation_id, sessionId, decodeRes.body, res);
     } catch (err) {
       conversationRegistry.delete(body.conversation_id);
       sessionTracker.sessionEnd(sessionId);
-      streamMetrics.sessionEnd(sessionId, 'worker_error');
+      if (decodeStarted) {
+        decodeTracker.decodeEnd(sessionId);
+        streamMetrics.sessionEnd(sessionId, 'worker_error');
+      }
       if (!res.writableEnded) {
         res.write(`data: ${JSON.stringify({ error: 'Worker connection lost during decode' })}\n\n`);
         res.end();
@@ -489,6 +523,7 @@ async function streamTokensToClient(
     // sessionTracker teardown paths (session_full, session_gone, decode
     // hard failure) end the underlying worker session.
     conversationRegistry.touch(conversationId);
+    decodeTracker.decodeEnd(sessionId);
     streamMetrics.sessionEnd(sessionId, terminationReason);
   }
 }

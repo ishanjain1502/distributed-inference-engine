@@ -16,6 +16,7 @@ import {
   recordAdmissionDecision,
   getCapacityConfig,
 } from './capacity';
+import { decodeTracker } from './decodeTracker';
 
 export interface RequestMeta {
   model: string;
@@ -100,8 +101,22 @@ export function canAcceptRequest(
     return { canAccept: false, reason: 'no_healthy_workers' };
   }
 
+  const decodeCheck = decodeTracker.canAcceptOnAnyWorker(alive.map((w) => w.id));
+  if (decodeCheck.canAccept === false) {
+    console.warn(
+      JSON.stringify({
+        event: 'admission.reject',
+        reason: decodeCheck.reason,
+        in_flight_decodes: decodeTracker.getTotal(),
+      })
+    );
+    return { canAccept: false, reason: decodeCheck.reason };
+  }
+
   const config = getSchedulerConfig();
-  const available = alive.filter((w) => isWithinCapacity(w, config));
+  const available = alive.filter(
+    (w) => isWithinCapacity(w, config) && decodeTracker.workerHasCapacity(w.id)
+  );
 
   if (available.length === 0) {
     return { canAccept: false, reason: 'all_workers_at_capacity' };
@@ -188,7 +203,9 @@ export function selectWorker(
     throw new WorkerSelectionError('no_healthy_workers', workers.length);
   }
 
-  const available = alive.filter((w) => isWithinCapacity(w, config));
+  const available = alive.filter(
+    (w) => isWithinCapacity(w, config) && decodeTracker.workerHasCapacity(w.id)
+  );
 
   if (available.length === 0) {
     schedulerMetrics.rejectedAtCapacity++;

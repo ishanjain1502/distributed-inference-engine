@@ -31,9 +31,25 @@ impl TokenEmitter {
         Ok(seq)
     }
 
+    /// Emit from a blocking context (e.g. `spawn_blocking` decode loop).
+    /// Blocks when the bounded channel is full, applying backpressure.
+    pub fn emit_blocking(&self, token: String) -> Result<u64, EmitError> {
+        let seq = self.seq.fetch_add(1, Ordering::SeqCst);
+        let msg = TokenMessage { token, seq };
+        self.tx
+            .blocking_send(msg)
+            .map_err(|_| EmitError::ChannelClosed)?;
+        Ok(seq)
+    }
+
     pub fn next_seq(&self) -> u64 {
         self.seq.load(Ordering::SeqCst)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmitError {
+    ChannelClosed,
 }
 
 #[cfg(test)]
@@ -77,5 +93,37 @@ mod tests {
         rx.recv().await.unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         assert!(emit_handle.is_finished());
+    }
+
+    #[test]
+    fn emit_blocking_blocks_when_channel_full() {
+        let (tx, mut rx) = mpsc::channel::<TokenMessage>(2);
+        let emitter = TokenEmitter {
+            tx,
+            seq: AtomicU64::new(0),
+        };
+
+        emitter.emit_blocking("a".to_string()).unwrap();
+        emitter.emit_blocking("b".to_string()).unwrap();
+
+        let emit_handle = std::thread::spawn(move || {
+            emitter.emit_blocking("c".to_string()).unwrap();
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        assert!(!emit_handle.is_finished());
+
+        rx.blocking_recv().unwrap();
+        emit_handle.join().unwrap();
+    }
+
+    #[test]
+    fn emit_blocking_fails_when_receiver_dropped() {
+        let (emitter, _rx) = TokenEmitter::new();
+        drop(_rx);
+        assert_eq!(
+            emitter.emit_blocking("a".to_string()),
+            Err(EmitError::ChannelClosed)
+        );
     }
 }

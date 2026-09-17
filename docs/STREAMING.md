@@ -43,6 +43,24 @@ SSE wire format:
 
 ---
 
+## Worker Side (stream.rs + model.rs)
+
+Decode emits one token at a time from `run_decode_stream()`:
+
+```
+spawn_blocking decode loop
+  start_completing_with (once)
+  for token in handle.into_strings():
+    emit_blocking(token)  ──► mpsc channel (32)
+                              blocks when full
+```
+
+**Backpressure at the worker SSE boundary:** `emit_blocking` uses a bounded tokio channel (capacity 32). When the coordinator stops reading worker SSE, the channel fills and the decode loop blocks before accepting the next string piece.
+
+**Note (`llama_cpp` 0.3):** The crate runs generation on a background thread with an internal unbounded queue. If emit is blocked, that thread may still buffer up to `max_tokens` until the client disconnects and the completion handle is dropped. Worker→coordinator backpressure is real; full llama-side backpressure requires a future stepwise decode refactor (e.g. `llama-cpp-4`).
+
+---
+
 ## Worker Side (stream.rs)
 
 ```

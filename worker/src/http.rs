@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 
 use crate::budget;
 use crate::metrics::metrics;
-use crate::model::{prefill_session, ModelManager};
+use crate::model::{prefill_session, DecodeStreamEnd, ModelManager};
 use crate::state::{check_capacity, Session, Sessions};
 use crate::stream::TokenEmitter;
 use std::sync::Arc;
@@ -396,46 +396,48 @@ pub async fn decode(
 
     tokio::spawn(async move {
         let decode_start = Instant::now();
-        let mut tokens_emitted: u32 = 0;
-        let mut end_reason = DecodeEndReason::Complete;
 
         debug!(session_id = %task_session_id, max_tokens = max_tokens, "Starting decode loop");
 
-        // Generate tokens using the model
-        let tokens = match crate::model::generate_tokens(model_session, max_tokens).await {
-            Ok(tokens) => tokens,
-            Err(e) => {
-                end_reason = DecodeEndReason::Error;
+        let stream_result =
+            crate::model::run_decode_stream(model_session, max_tokens, emitter).await;
+        let tokens_emitted = stream_result.tokens_emitted;
+        let end_reason = match stream_result.end {
+            DecodeStreamEnd::Complete => DecodeEndReason::Complete,
+            DecodeStreamEnd::ClientDisconnect => DecodeEndReason::ClientDisconnect,
+            DecodeStreamEnd::Error => DecodeEndReason::Error,
+        };
+
+        if let Some(first_token_ms) = stream_result.first_token_ms {
+            debug!(
+                session_id = %task_session_id,
+                first_token_ms = first_token_ms,
+                "decode.first_token"
+            );
+        }
+
+        match end_reason {
+            DecodeEndReason::Error => {
                 warn!(
                     session_id = %task_session_id,
-                    error = %e,
                     "decode.token_generation_failed"
                 );
                 metrics().record_decode_failure();
-                Vec::new()
             }
-        };
+            DecodeEndReason::ClientDisconnect => {
+                warn!(
+                    session_id = %task_session_id,
+                    tokens_emitted = tokens_emitted,
+                    reason = %end_reason,
+                    "decode.early_termination"
+                );
+                metrics().record_decode_failure();
+            }
+            DecodeEndReason::Complete => {}
+        }
 
-        // Stream tokens to the emitter
-        for token in tokens {
-            match emitter.emit(token).await {
-                Ok(seq) => {
-                    tokens_emitted += 1;
-                    metrics().record_token_decoded().await;
-                    debug!(session_id = %task_session_id, seq = seq, "Emitted token");
-                }
-                Err(_) => {
-                    end_reason = DecodeEndReason::ClientDisconnect;
-                    warn!(
-                        session_id = %task_session_id,
-                        tokens_emitted = tokens_emitted,
-                        reason = %end_reason,
-                        "decode.early_termination"
-                    );
-                    metrics().record_decode_failure();
-                    break;
-                }
-            }
+        for _ in 0..tokens_emitted {
+            metrics().record_token_decoded().await;
         }
 
         let decode_duration = decode_start.elapsed();

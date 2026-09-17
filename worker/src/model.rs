@@ -1,11 +1,14 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use anyhow::{Context, Result};
 use llama_cpp::{
     LlamaModel, LlamaParams, SessionParams, LlamaSession,
     standard_sampler::StandardSampler,
 };
 use tracing::info;
+
+use crate::stream::{EmitError, TokenEmitter};
 
 /// Thread count for llama.cpp sessions.
 ///
@@ -119,32 +122,90 @@ fn estimate_token_count(text: &str) -> u32 {
     (text.len() / 4).max(1) as u32
 }
 
-/// Generate tokens and return them as a vector
-/// This runs in a blocking task since llama-cpp operations are blocking
-pub async fn generate_tokens(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecodeStreamEnd {
+    Complete,
+    ClientDisconnect,
+    Error,
+}
+
+pub struct DecodeStreamResult {
+    pub tokens_emitted: u32,
+    pub end: DecodeStreamEnd,
+    pub first_token_ms: Option<f64>,
+}
+
+/// Incrementally decode and emit tokens via a bounded channel.
+/// Holds the session mutex only for `start_completing_with`, then streams one
+/// string piece at a time so TTFT reflects a single forward pass.
+pub async fn run_decode_stream(
     session: Arc<Mutex<LlamaSession>>,
     max_tokens: u32,
-) -> Result<Vec<String>> {
-    // Use spawn_blocking to run the blocking model operation
-    let sampler = StandardSampler::default();
-    
-    tokio::task::spawn_blocking(move || {
-        let mut session_guard = session.lock().unwrap();
-        
-        // Start completion - this creates a worker thread (returns Result<CompletionHandle, _>)
-        let completions = session_guard.start_completing_with(sampler, max_tokens as usize)?;
-        
-        // Collect tokens into a vector
-        let tokens: Vec<String> = completions
-            .into_strings()
-            .take(max_tokens as usize)
-            .collect();
-        
-        Ok::<Vec<String>, anyhow::Error>(tokens)
+    emitter: TokenEmitter,
+) -> DecodeStreamResult {
+    let blocking_result = tokio::task::spawn_blocking(move || {
+        let decode_start = Instant::now();
+        let mut session_guard = match session.lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                return DecodeStreamResult {
+                    tokens_emitted: 0,
+                    end: DecodeStreamEnd::Error,
+                    first_token_ms: None,
+                };
+            }
+        };
+
+        let sampler = StandardSampler::default();
+        let handle = match session_guard.start_completing_with(sampler, max_tokens as usize) {
+            Ok(handle) => handle,
+            Err(_) => {
+                return DecodeStreamResult {
+                    tokens_emitted: 0,
+                    end: DecodeStreamEnd::Error,
+                    first_token_ms: None,
+                };
+            }
+        };
+        drop(session_guard);
+
+        let mut strings = handle.into_strings();
+        let mut tokens_emitted = 0u32;
+        let mut end = DecodeStreamEnd::Complete;
+        let mut first_token_ms = None;
+
+        while let Some(token) = strings.next() {
+            match emitter.emit_blocking(token) {
+                Ok(_) => {
+                    if tokens_emitted == 0 {
+                        first_token_ms =
+                            Some(decode_start.elapsed().as_secs_f64() * 1000.0);
+                    }
+                    tokens_emitted += 1;
+                }
+                Err(EmitError::ChannelClosed) => {
+                    end = DecodeStreamEnd::ClientDisconnect;
+                    break;
+                }
+            }
+        }
+
+        DecodeStreamResult {
+            tokens_emitted,
+            end,
+            first_token_ms,
+        }
     })
-    .await
-    .context("Token generation task panicked")?
-    .context("Token generation failed")
+    .await;
+
+    match blocking_result {
+        Ok(result) => result,
+        Err(_) => DecodeStreamResult {
+            tokens_emitted: 0,
+            end: DecodeStreamEnd::Error,
+            first_token_ms: None,
+        },
+    }
 }
 
 #[cfg(test)]

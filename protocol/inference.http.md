@@ -37,7 +37,7 @@ Each SSE event contains:
 | 409 | Conversation reset required. Body includes `reason`: `session_full` (KV or context budget exceeded) or `session_gone` (worker/session lost, including a model mismatch on continue). Client must use a **new** `conversation_id` after `session_full`; for `session_gone`, a new id is recommended. |
 | 413 | Prompt too long. Body includes `reason: "prompt_too_long"`: this turn's prompt alone exceeds the context budget, so rotating `conversation_id` cannot help - a fresh session hits the same limit. Client should shorten the prompt and retry (same `conversation_id` is fine). |
 | 502 | Worker unreachable or failed |
-| 503 | No healthy workers |
+| 503 | System at capacity. Body includes `reason`: `no_workers`, `system_sessions_full`, `system_kv_cache_full`, `system_in_flight_decode_full`, `all_workers_at_capacity`, `all_workers_decode_busy`, or `worker_in_flight_decode_full` (sticky continue on a saturated worker). |
 
 ---
 

@@ -1,0 +1,75 @@
+worker-1  | 2026-08-15T11:22:00.918070Z  WARN llama_cpp::model: Could not find metadata key="%s.ssm.state_size"
+worker-1  | 2026-08-15T11:22:00.918073Z  INFO worker::model: Model loaded successfully
+worker-1  | 2026-08-15T11:22:00.918077Z  INFO worker: Model loaded successfully model_path=/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf
+worker-1  | 2026-08-15T11:22:00.918094Z  INFO worker: Starting worker with heartbeat worker_id=worker-1 worker_url=http://worker:3001 coordinator=http://coordinator:1337
+worker-1  | 2026-08-15T11:22:00.918176Z  INFO worker: Worker listening on 0.0.0.0:3001
+worker-1  | 2026-08-15T11:22:00.919313Z  INFO worker::metrics: Starting metrics emission loop interval_secs=10
+worker-1  | 2026-08-15T11:22:00.919389Z  INFO worker::state: Starting session eviction loop ttl_secs=300 check_interval_secs=60
+worker-1  | 2026-08-15T11:22:00.919455Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:22:00.962068Z ERROR worker::heartbeat: Failed to send heartbeat worker_id=worker-1 error=error sending request for url (http://coordinator:1337/coordinator/health/heartbeat)
+worker-1  | 2026-08-15T11:22:10.919543Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:22:20.919508Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:22:30.919442Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:22:40.919987Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:22:50.919350Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:23:00.920045Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:23:10.919207Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:23:20.919398Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:23:30.919336Z  INFO worker::metrics: worker.metrics prefill_latency_ms=0.0 avg_prefill_latency_ms=0.0 decode_tps=0.0 tokens_decoded=0 decode_failures=0 kv_cache_bytes=0 active_sessions=0
+worker-1  | 2026-08-15T11:23:39.754157Z  INFO llama.cpp: llama_new_context_with_model: n_ctx      = 512
+worker-1  | 2026-08-15T11:23:39.754182Z  INFO llama.cpp: llama_new_context_with_model: n_batch    = 512
+worker-1  | 2026-08-15T11:23:39.754185Z  INFO llama.cpp: llama_new_context_with_model: n_ubatch   = 512
+worker-1  | 2026-08-15T11:23:39.754195Z  INFO llama.cpp: llama_new_context_with_model: freq_base  = 10000.0
+worker-1  | 2026-08-15T11:23:39.754198Z  INFO llama.cpp: llama_new_context_with_model: freq_scale = 1
+worker-1  | 2026-08-15T11:23:39.758099Z  INFO llama.cpp: llama_kv_cache_init:        CPU KV buffer size =    11.00 MiB
+worker-1  | 2026-08-15T11:23:39.758130Z  INFO llama.cpp: llama_new_context_with_model: KV self size  =   11.00 MiB, K (f16):    5.50 MiB, V (f16):    5.50 MiB
+worker-1  | 2026-08-15T11:23:39.758184Z  INFO llama.cpp: llama_new_context_with_model:        CPU  output buffer size =     0.12 MiB
+worker-1  | 2026-08-15T11:23:39.760719Z  INFO llama.cpp: llama_new_context_with_model:        CPU compute buffer size =    66.50 MiB
+worker-1  | 2026-08-15T11:23:39.760731Z  INFO llama.cpp: llama_new_context_with_model: graph nodes  = 710
+worker-1  | 2026-08-15T11:23:39.760734Z  INFO llama.cpp: llama_new_context_with_model: graph splits = 1
+worker-1  | 2026-08-15T11:23:39.760741Z  INFO worker::model: Starting prefill prompt=Write one short sentence about the ocean. prompt_len=41
+worker-1  | 2026-08-15T11:23:39.761058Z  INFO llama_cpp::session: Advancing context with 10 tokens
+worker-1  | GGML_ASSERT: ./thirdparty/llama.cpp/llama.cpp:10216: n_threads > 0
+worker-1  | 2026-08-15T11:23:39.762109Z  INFO llama.cpp: llama_new_context_with_model: n_ctx      = 512
+worker-1  | 2026-08-15T11:23:39.762118Z  INFO llama.cpp: llama_new_context_with_model: n_batch    = 512
+worker-1  | 2026-08-15T11:23:39.762120Z  INFO llama.cpp: llama_new_context_with_model: n_ubatch   = 512
+worker-1  | 2026-08-15T11:23:39.762124Z  INFO llama.cpp: llama_new_context_with_model: freq_base  = 10000.0
+worker-1  | 2026-08-15T11:23:39.762126Z  INFO llama.cpp: llama_new_context_with_model: freq_scale = 1
+worker-1  | 2026-08-15T11:23:39.765282Z  INFO llama.cpp: llama_kv_cache_init:        CPU KV buffer size =    11.00 MiB
+worker-1  | 2026-08-15T11:23:39.765293Z  INFO llama.cpp: llama_new_context_with_model: KV self size  =   11.00 MiB, K (f16):    5.50 MiB, V (f16):    5.50 MiB
+worker-1  | 2026-08-15T11:23:39.765635Z  INFO llama.cpp: llama_new_context_with_model:        CPU  output buffer size =     0.12 MiB
+worker-1  | 2026-08-15T11:23:39.768618Z  INFO llama.cpp: llama_new_context_with_model:        CPU compute buffer size =    66.50 MiB
+worker-1  | 2026-08-15T11:23:39.768625Z  INFO llama.cpp: llama_new_context_with_model: graph nodes  = 710
+worker-1  | 2026-08-15T11:23:39.768627Z  INFO llama.cpp: llama_new_context_with_model: graph splits = 1
+worker-1  | 2026-08-15T11:23:39.768638Z  INFO worker::model: Starting prefill prompt=Write one short sentence about the ocean. prompt_len=41
+worker-1  | 2026-08-15T11:23:39.768873Z  INFO llama.cpp: llama_new_context_with_model: n_ctx      = 512
+worker-1  | 2026-08-15T11:23:39.768877Z  INFO llama.cpp: llama_new_context_with_model: n_batch    = 512
+worker-1  | 2026-08-15T11:23:39.768879Z  INFO llama.cpp: llama_new_context_with_model: n_ubatch   = 512
+worker-1  | 2026-08-15T11:23:39.768882Z  INFO llama.cpp: llama_new_context_with_model: freq_base  = 10000.0
+worker-1  | 2026-08-15T11:23:39.768884Z  INFO llama.cpp: llama_new_context_with_model: freq_scale = 1
+worker-1  | 2026-08-15T11:23:39.773277Z  INFO llama.cpp: llama_kv_cache_init:        CPU KV buffer size =    11.00 MiB
+worker-1  | 2026-08-15T11:23:39.773514Z  INFO llama.cpp: llama_new_context_with_model: KV self size  =   11.00 MiB, K (f16):    5.50 MiB, V (f16):    5.50 MiB
+worker-1  | 2026-08-15T11:23:39.773734Z  INFO llama.cpp: llama_new_context_with_model:        CPU  output buffer size =     0.12 MiB
+worker-1  | 2026-08-15T11:23:39.776850Z  INFO llama.cpp: llama_new_context_with_model:        CPU compute buffer size =    66.50 MiB
+worker-1  | 2026-08-15T11:23:39.777068Z  INFO llama.cpp: llama_new_context_with_model: graph nodes  = 710
+worker-1  | 2026-08-15T11:23:39.777207Z  INFO llama.cpp: llama_new_context_with_model: graph splits = 1
+worker-1  | 2026-08-15T11:23:39.777350Z  INFO llama.cpp: llama_new_context_with_model: n_ctx      = 512
+worker-1  | 2026-08-15T11:23:39.777487Z  INFO llama.cpp: llama_new_context_with_model: n_batch    = 512
+worker-1  | 2026-08-15T11:23:39.777617Z  INFO llama.cpp: llama_new_context_with_model: n_ubatch   = 512
+worker-1  | 2026-08-15T11:23:39.777750Z  INFO llama.cpp: llama_new_context_with_model: freq_base  = 10000.0
+worker-1  | 2026-08-15T11:23:39.777887Z  INFO llama.cpp: llama_new_context_with_model: freq_scale = 1
+worker-1  | 2026-08-15T11:23:39.781658Z  INFO llama.cpp: llama_kv_cache_init:        CPU KV buffer size =    11.00 MiB
+worker-1  | 2026-08-15T11:23:39.781870Z  INFO llama.cpp: llama_new_context_with_model: KV self size  =   11.00 MiB, K (f16):    5.50 MiB, V (f16):    5.50 MiB
+worker-1  | 2026-08-15T11:23:39.782075Z  INFO llama.cpp: llama_new_context_with_model:        CPU  output buffer size =     0.12 MiB
+worker-1  | 2026-08-15T11:23:39.785078Z  INFO llama.cpp: llama_new_context_with_model:        CPU compute buffer size =    66.50 MiB
+worker-1  | 2026-08-15T11:23:39.785316Z  INFO llama.cpp: llama_new_context_with_model: graph nodes  = 710
+worker-1  | 2026-08-15T11:23:39.785457Z  INFO llama.cpp: llama_new_context_with_model: graph splits = 1
+worker-1  | 2026-08-15T11:23:39.785301Z  INFO worker::model: Starting prefill prompt=Write one short sentence about the ocean. prompt_len=41
+worker-1  | GGML_ASSERT: ./thirdparty/llama.cpp/llama.cpp:10216: n_threads > 0
+worker-1  | 2026-08-15T11:23:39.785777Z  INFO llama_cpp::session: Advancing context with 10 tokens
+worker-1  | 2026-08-15T11:23:39.785600Z  INFO worker::model: Starting prefill prompt=Write one short sentence about the ocean. prompt_len=41
+worker-1  | 2026-08-15T11:23:39.794489Z  INFO llama_cpp::session: Advancing context with 10 tokens
+worker-1  | 2026-08-15T11:23:39.794520Z  INFO llama_cpp::session: Advancing context with 10 tokens
+worker-1  | GGML_ASSERT: ./thirdparty/llama.cpp/llama.cpp:10216: n_threads > 0
+worker-1  | GGML_ASSERT: ./thirdparty/llama.cpp/llama.cpp:10216: n_threads > 0
+worker-1 exited with code 139

@@ -115,11 +115,10 @@ POST /worker/decode
               │                              ┌────────────────────────────┐
               │                              │      DECODE LOOP           │
               │                              │                            │
-              │                              │  for i in 0..max_tokens {  │
-              │                              │    token = generate()      │
-              │                              │    emitter.emit(token)     │
+              │                              │  start_completing_with()   │
+              │                              │  for token in into_strings │
+              │                              │    emit_blocking(token)    │
               │                              │      └─► blocks if full    │
-              │                              │    sleep(50ms)             │
               │                              │  }                         │
               │                              │                            │
               │                              │  Log: session.end          │

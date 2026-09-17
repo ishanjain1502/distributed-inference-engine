@@ -1,28 +1,28 @@
 # Inference Engine
 
-A distributed inference framework for large language models that routes requests to workers, manages KV cache lifecycle, handles failures gracefully, and applies backpressure so memory — not compute — is the bottleneck.
+A distributed inference framework for large language models that routes requests to workers, manages KV cache lifecycle, handles failures gracefully, and applies backpressure plus admission control so memory and CPU do not become unbounded bottlenecks.
 
 <!--
 Metadata for LLM parsing:
 - Project Type: Distributed inference system, LLM serving infrastructure
 - Technology Stack: TypeScript/Node.js (Coordinator), Rust (Worker), Express, Axum
 - Use Cases: Horizontal scaling of LLM inference, memory-aware load balancing, distributed token generation
-- Status: Infrastructure complete, LLM integration pending
+- Status: Production-ready with llama.cpp worker integration; ongoing performance work
 - Key Concepts: KV cache management, backpressure, admission control, session management, worker scheduling
 - Architecture Pattern: Coordinator-Worker distributed system
 -->
 
-> **Note:** This is the infrastructure layer. LLM integration is not yet implemented. The system provides the distributed architecture, routing, and session management, but actual model inference needs to be integrated.
+> **Note:** The coordinator handles routing, admission, and streaming; each worker runs llama.cpp inference (GGUF models). Default demo model is TinyLlama 1.1B Q4_K_M.
 
 ## TL;DR
 
-**What this is:** A production-ready distributed inference framework for scaling LLM serving across multiple workers with memory-aware admission control, backpressure handling, and automatic failure recovery.
+**What this is:** A distributed inference stack for scaling LLM serving across multiple workers — memory-aware admission, in-flight decode limits, incremental token streaming, multi-turn KV reuse, and failure recovery.
 
-**What this isn't:** A complete LLM inference solution (model integration pending) or a single-server inference engine.
+**What this isn't:** A managed model hub, GPU scheduler, or single-binary “drop in any model” product without worker configuration.
 
-**Tech Stack:** TypeScript/Node.js (Coordinator) + Rust (Worker) with Express and Axum.
+**Tech Stack:** TypeScript/Node.js (Coordinator) + Rust (Worker) with Express, Axum, and `llama_cpp` 0.3.
 
-**Key Features:** O(1) admission control, horizontal scaling, backpressure, session management, heartbeat-based health monitoring.
+**Key Features:** O(1) admission control, in-flight decode caps, horizontal scaling, backpressure, sticky multi-turn sessions, heartbeat-based health monitoring.
 
 ## Use Cases
 
@@ -209,7 +209,7 @@ Model: `tinyllama-1.1b-chat-v1.0.Q4_K_M`. Prompt: “Write one short sentence ab
 |------------|----------|---------|----------|-------------|--------------|------------|
 | 4 | 16 | 16/16 | 0 | 9.1s | ~119s | ~1.3 tok/s |
 
-The probe stopped at this first level: wait time already missed a 30s first-token budget, so higher concurrency was not run. The server never rejected a request and barely used session/KV headroom — the limiter was CPU, not “full.”
+The probe stopped at this first level: wait time already missed a 30s first-token budget, so higher concurrency was not run. The server never rejected a request and barely used session/KV headroom — the limiter was CPU, not “full.” The coordinator now also enforces **in-flight decode limits** (`MAX_IN_FLIGHT_DECODES*`) to shed load with 503 before queues grow unbounded; re-run the probe to measure reject rate vs wait time.
 
 Raw report: `results/capacity.json`.
 
@@ -232,6 +232,8 @@ python scripts/bench.py --mode bench --concurrency 4 --requests 20 \
 | `OBJCOPY_PATH` | Worker build (Windows) | Full path to `llvm-objcopy.exe`, e.g. `C:\Program Files\LLVM\bin\llvm-objcopy.exe`. |
 | `PORT` | Coordinator | Coordinator port (default `1337`). |
 | `HOST` | Coordinator | Coordinator host (default `0.0.0.0`). |
+| `MAX_IN_FLIGHT_DECODES` | Coordinator | System-wide cap on concurrent decode streams (default `32`). |
+| `MAX_IN_FLIGHT_DECODES_PER_WORKER` | Coordinator | Per-worker decode concurrency cap (default `4`). |
 | `WORKER_ID`, `WORKER_URL`, `COORDINATOR_URL` | Worker | Override worker identity and URLs if running multiple workers or custom topology. |
 
 ---
@@ -255,7 +257,8 @@ The system consists of three components, each with a single responsibility:
 ┌─────────────────────────────────────────────────────────────────┐
 │                       COORDINATOR                               │
 │  • Admission control (O(1))                                     │
-│  • Session tracking                                             │
+│  • In-flight decode limits                                      │
+│  • Session tracking + multi-turn reuse                          │
 │  • Backpressure + streaming                                     │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -273,22 +276,24 @@ The system consists of three components, each with a single responsibility:
 
 **Coordinator** (TypeScript/Node.js)
 - Entry point for all client requests
-- Streams tokens from worker to client
+- Streams tokens from worker to client incrementally (SSE)
 - Applies backpressure — buffers fill, clients get dropped, not workers
-- Tracks sessions for real-time capacity awareness
-- Never touches model weights or KV cache
+- Tracks sessions and conversation stickiness for multi-turn KV reuse
+- Rejects overload via session/KV limits and in-flight decode caps (503)
+- Never touches model weights or KV cache tensors
 
 **Scheduler** (Pure function)
 - Selects which worker handles each request
 - Scores workers by session count (60%) and KV cache usage (40%)
+- Skips workers at session/KV or decode concurrency limits
 - Rejects early if system is at capacity (O(1) check)
 
-**Worker** (Rust)
-- Designed to own the model — weights, tokenizer, KV cache (LLM integration pending)
-- Prefill: Tokenize prompt, build initial KV cache (infrastructure ready)
-- Decode: Autoregressive token generation (infrastructure ready)
-- Enforces local limits — max sessions, max KV per session
-- No client awareness — just produces tokens into a bounded channel
+**Worker** (Rust + llama.cpp)
+- Owns model weights, tokenizer, and per-session KV cache (`llama_cpp` 0.3)
+- **Prefill:** tokenize prompt and build KV cache (`create` or `continue` mode)
+- **Decode:** incremental autoregressive generation into a bounded channel
+- Enforces local limits — max sessions, max KV per session, context token budget
+- No client awareness — produces tokens; coordinator handles client flow
 
 ---
 
@@ -312,11 +317,11 @@ Start an inference request. Returns streaming tokens via Server-Sent Events.
 
 **Response:** `text/event-stream`
 
-Each SSE event:
+Each SSE event (worker → coordinator; coordinator forwards the same shape):
 ```json
 {
   "token": "string",
-  "finished": boolean
+  "seq": 0
 }
 ```
 
@@ -324,8 +329,9 @@ Each SSE event:
 - `200` - Success (streaming)
 - `400` - Missing required fields
 - `409` - Conversation reset required (`reason`: `session_full` or `session_gone`)
+- `413` - Prompt too long for context budget (`reason`: `prompt_too_long`)
 - `502` - Worker unreachable or failed
-- `503` - System at capacity
+- `503` - System at capacity (`reason` includes `system_in_flight_decode_full`, `all_workers_decode_busy`, `worker_in_flight_decode_full`, session/KV limits, or no workers)
 
 See [protocol/inference.http.md](protocol/inference.http.md) for complete API documentation.
 
@@ -338,6 +344,8 @@ See [protocol/inference.http.md](protocol/inference.http.md) for complete API do
 Environment variables (optional):
 - `PORT` - Server port (default: `1337`)
 - `HOST` - Server host (default: `0.0.0.0`)
+- `MAX_IN_FLIGHT_DECODES` - System-wide concurrent decode streams (default: `32`)
+- `MAX_IN_FLIGHT_DECODES_PER_WORKER` - Per-worker decode concurrency (default: `4`; lower on CPU-only hosts, e.g. `2`)
 
 ### Worker
 
@@ -353,14 +361,17 @@ Environment variables:
 
 ### System Limits
 
-**Per Worker:**
+**Per Worker (worker-enforced):**
 - 100 max sessions
 - 512 MB max KV per session
+- 2048 context tokens (approximate budgeting)
 - 8 GB total KV cache
 
-**System-wide:**
+**System-wide (coordinator admission):**
 - 1000 total sessions
-- 64 GB total KV cache
+- 16 GB total KV cache (scheduler aggregate)
+- 32 concurrent decode streams (default; `MAX_IN_FLIGHT_DECODES`)
+- 4 concurrent decodes per worker (default; `MAX_IN_FLIGHT_DECODES_PER_WORKER`)
 
 ---
 
@@ -405,7 +416,9 @@ inference-engine/
 ## Key Features
 
 - **Distributed Architecture**: Framework for scaling inference across multiple workers
-- **Memory-Aware Admission Control**: O(1) capacity checks prevent overload
+- **Memory-Aware Admission Control**: O(1) session/KV capacity checks prevent overload
+- **In-Flight Decode Admission**: CPU-aware 503 when decode concurrency is saturated
+- **Incremental Streaming**: Tokens emitted as generated (low TTFT after prefill)
 - **Backpressure**: Slow clients are dropped, not workers
 - **Failure Resilience**: Automatic retries for prefill failures
 - **Session Management**: KV cache lifecycle infrastructure with TTL-based cleanup
@@ -434,24 +447,22 @@ For detailed information, see:
 
 ## Current Status
 
-**Project Phase:** Infrastructure complete, LLM integration pending.
-
-This project provides the **infrastructure layer** for distributed LLM inference:
+**Project Phase:** Production-ready distributed inference with TinyLlama integration; ongoing performance and resilience work.
 
 ✅ **Implemented:**
-- Coordinator with admission control and session tracking
-- Worker framework with health monitoring and heartbeat
+- Coordinator with admission control, session tracking, and multi-turn conversation reuse
+- In-flight decode admission (system + per-worker decode caps, exposed on `/coordinator/stats`)
+- Worker with llama.cpp inference (prefill + incremental decode streaming)
 - Scheduler for worker selection
-- Streaming infrastructure with backpressure
-- Session management and KV cache lifecycle (infrastructure)
-- Failure handling and retry logic
+- Streaming with backpressure (bounded worker channel + coordinator buffer)
+- Session management and KV budget enforcement
+- Failure handling, prefill retry, and bench/capacity tooling
 
-🚧 **Pending:**
-- LLM model integration (model loading, tokenization, inference)
-- Actual KV cache implementation tied to a specific model backend
-- Token generation logic
-
-**Integration Requirements:** To complete LLM integration, implement model loading, tokenization, and inference logic in the worker's `model.rs` module. The infrastructure for session management, streaming, and KV cache lifecycle is ready.
+🚧 **Next improvements:**
+- Summary re-prefill on worker failure / session full
+- Speculative decoding (`llama-cpp-4` migration)
+- Accurate tokenizer-based KV accounting
+- GPU offload and continuous batching
 
 ---
 
@@ -465,10 +476,14 @@ This project provides the **infrastructure layer** for distributed LLM inference
 
 ### Coordinator returns 503 "System at capacity"
 
-- **Check worker health**: `curl http://localhost:3001/worker/health`
+- **Read `reason` in the JSON body** — common values:
+  - `system_in_flight_decode_full` / `all_workers_decode_busy` / `worker_in_flight_decode_full`: too many concurrent decodes; retry later or raise `MAX_IN_FLIGHT_DECODES*` if hardware allows
+  - `system_sessions_full` / `system_kv_cache_full`: memory admission limits
+  - `no_workers` / `all_workers_at_capacity`: workers down or at session/KV limits
+- **Check stats**: `curl http://localhost:1337/coordinator/stats` — see `in_flight_decodes` and per-worker counts
+- **Check worker health**: `curl http://localhost:3001/worker/health` (local `start.sh`) or workers list via coordinator health
 - **Verify worker registration**: `curl http://localhost:1337/coordinator/health/workers`
-- **Check system limits**: Review session and KV cache limits
-- **Ensure worker is running**: Worker must be running and sending heartbeats
+- **Tune decode caps on CPU-only hosts**: try `MAX_IN_FLIGHT_DECODES_PER_WORKER=2` before increasing concurrency in benchmarks
 
 ### Coordinator can't reach worker
 
@@ -497,7 +512,13 @@ cargo build --release
 
 ### Testing
 
-See individual component documentation for testing instructions.
+**Coordinator unit tests:**
+```bash
+cd coordinator
+npm test
+```
+
+See component docs under `docs/` for integration and manual test flows.
 
 ---
 
@@ -517,6 +538,6 @@ Contributions welcome! Please read the architecture documentation before making 
 
 **Core Concepts:** KV cache management, session lifecycle, admission control, worker scheduling, backpressure, heartbeat monitoring, failure recovery.
 
-**Current State:** Infrastructure layer complete; LLM model integration completed. Next steps would be to have failing request getting readmitted with some summary of sort and implimentation of other optimization techniques
+**Current State:** End-to-end GGUF inference via llama.cpp workers; coordinator admission includes session/KV and in-flight decode limits. Planned: summary re-prefill on failure, speculative decoding, tokenizer-accurate KV accounting.
 
 **Related Documentation:** See `docs/` directory for detailed architecture, failure modes, streaming, and component-specific documentation.

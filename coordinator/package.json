@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "dist/server.js",
   "scripts": {
-    "test": "tsc && node --test tests/conversationRegistry.test.mjs",
+    "test": "tsc && node --test tests/conversationRegistry.test.mjs tests/decodeAdmission.test.mjs",
     "build": "tsc",
     "start": "node dist/server.js"
   },
