@@ -457,9 +457,9 @@ For detailed information, see:
 - Streaming with backpressure (bounded worker channel + coordinator buffer)
 - Session management and KV budget enforcement
 - Failure handling, prefill retry, and bench/capacity tooling
+- Summary re-prefill (invisible compaction on session full, worker loss, drain, and KV pressure)
 
 🚧 **Next improvements:**
-- Summary re-prefill on worker failure / session full
 - Speculative decoding (`llama-cpp-4` migration)
 - Accurate tokenizer-based KV accounting
 - GPU offload and continuous batching
@@ -538,6 +538,6 @@ Contributions welcome! Please read the architecture documentation before making 
 
 **Core Concepts:** KV cache management, session lifecycle, admission control, worker scheduling, backpressure, heartbeat monitoring, failure recovery.
 
-**Current State:** End-to-end GGUF inference via llama.cpp workers; coordinator admission includes session/KV and in-flight decode limits. Planned: summary re-prefill on failure, speculative decoding, tokenizer-accurate KV accounting.
+**Current State:** End-to-end GGUF inference via llama.cpp workers; coordinator admission includes session/KV and in-flight decode limits, plus invisible summary re-prefill on session full, worker loss, drain, and KV pressure. Planned: speculative decoding, tokenizer-accurate KV accounting.
 
 **Related Documentation:** See `docs/` directory for detailed architecture, failure modes, streaming, and component-specific documentation.

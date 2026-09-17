@@ -9,6 +9,7 @@ export interface WorkerHealth {
   alive: boolean;
   active_sessions: number;
   kv_cache_bytes: number;
+  draining?: boolean;
 }
 
 export interface Worker {

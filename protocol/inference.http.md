@@ -34,7 +34,7 @@ Each SSE event contains:
 | Status | Meaning |
 |--------|---------|
 | 400 | Missing required fields (including `conversation_id`) |
-| 409 | Conversation reset required. Body includes `reason`: `session_full` (KV or context budget exceeded) or `session_gone` (worker/session lost, including a model mismatch on continue). Client must use a **new** `conversation_id` after `session_full`; for `session_gone`, a new id is recommended. |
+| 409 | Conversation reset required. Body includes `reason`: `session_full` or `session_gone`. Returned only when coordinator-side summary re-prefill compaction fails (no transcript, or post-truncation context still too large). On success, compaction is invisible — same `conversation_id`, unchanged SSE wire format. |
 | 413 | Prompt too long. Body includes `reason: "prompt_too_long"`: this turn's prompt alone exceeds the context budget, so rotating `conversation_id` cannot help - a fresh session hits the same limit. Client should shorten the prompt and retry (same `conversation_id` is fine). |
 | 502 | Worker unreachable or failed |
 | 503 | System at capacity. Body includes `reason`: `no_workers`, `system_sessions_full`, `system_kv_cache_full`, `system_in_flight_decode_full`, `all_workers_at_capacity`, `all_workers_decode_busy`, or `worker_in_flight_decode_full` (sticky continue on a saturated worker). |
@@ -111,6 +111,18 @@ Each SSE event contains:
 
 ---
 
+### DELETE /worker/sessions/:session_id
+
+Remove a session and free its KV cache. Idempotent (`404` if already gone).
+
+**Response**
+| Status | Meaning |
+|--------|---------|
+| 204 | Session removed |
+| 404 | Session not found (treated as success by coordinator) |
+
+---
+
 ### GET /worker/health
 
 Health check for scheduler.
@@ -149,4 +161,4 @@ Client              Coordinator              Worker
 
 ## Future work
 
-- **Truncated re-prefill:** When a session hits KV or context limits (`session_full`), instead of requiring the client to start a new `conversation_id`, re-prefill a truncated history into a fresh worker session while keeping the same `conversation_id`. Not implemented in v1.
+- **Persistent transcript store:** Coordinator transcripts are in-memory only; survive coordinator restart via external storage if needed later.

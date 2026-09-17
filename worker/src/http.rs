@@ -516,6 +516,22 @@ pub struct SessionsResponse {
     pub max_kv_cache_bytes: u64,
 }
 
+/// DELETE /worker/sessions/:session_id — remove session and free KV (idempotent).
+pub async fn delete_session(
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    State((sessions, _model_manager)): State<(Sessions, Arc<ModelManager>)>,
+) -> StatusCode {
+    let mut sessions_write = sessions.write().await;
+    if sessions_write.remove(&session_id).is_some() {
+        let total_kv: u64 = sessions_write.values().map(|s| s.kv_cache_bytes).sum();
+        metrics().set_kv_cache_bytes(total_kv);
+        metrics().set_active_sessions(sessions_write.len() as u64);
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
 /// GET /worker/sessions — list active sessions (metadata only, no prompt).
 pub async fn list_sessions(
     State((sessions, _model_manager)): State<(Sessions, Arc<ModelManager>)>,

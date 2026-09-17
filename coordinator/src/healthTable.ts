@@ -222,6 +222,7 @@ class HealthTable {
         console.log(`[HealthTable] Cleaned up ${removed} dead workers`);
       }
     }, CONFIG.CLEANUP_INTERVAL_MS);
+    this.cleanupTimer.unref();
   }
 
   /**

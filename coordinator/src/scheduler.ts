@@ -64,6 +64,10 @@ export function resetSchedulerMetrics(): void {
   schedulerMetrics.totalSelections = 0;
 }
 
+function isWorkerSchedulable(worker: Worker): boolean {
+  return worker.health?.alive === true && worker.health?.draining !== true;
+}
+
 function isWithinCapacity(worker: Worker, config: SchedulerConfig): boolean {
   if (!worker.health) return false;
   return (
@@ -96,7 +100,7 @@ export function canAcceptRequest(
     return { canAccept: false, reason: systemCheck.reason! };
   }
 
-  const alive = workers.filter((w) => w.health?.alive);
+  const alive = workers.filter((w) => isWorkerSchedulable(w));
   if (alive.length === 0) {
     return { canAccept: false, reason: 'no_healthy_workers' };
   }
@@ -187,7 +191,7 @@ export function selectWorker(
 ): Worker {
   const requestId = requestMeta.request_id ?? 'unknown';
 
-  const alive = workers.filter((w) => w.health?.alive);
+  const alive = workers.filter((w) => isWorkerSchedulable(w));
 
   if (alive.length === 0) {
     schedulerMetrics.rejectedNoWorkers++;

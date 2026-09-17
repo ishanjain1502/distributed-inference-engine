@@ -17,89 +17,68 @@ import { streamMetrics } from './streamMetrics';
 import { sessionTracker } from './sessionTracker';
 import { conversationRegistry } from './conversationRegistry';
 import { decodeTracker } from './decodeTracker';
+import { transcriptStore } from './transcriptStore';
+import {
+  compact,
+  CompactionTrigger,
+  shouldDebounce,
+} from './compactionService';
+import {
+  shouldCompactProactively,
+  splitTranscript,
+  SYSTEM_KV_COMPACT_BATCH,
+} from './compactionPolicy';
+import { pickSessionsToCompact } from './kvPressure';
+import { tryPrefill } from './workerClient';
 
 const MAX_PREFILL_RETRIES = 2;
 const STREAM_CONFIG = DEFAULT_STREAM_CONFIG;
 
 const router = Router();
 
-type PrefillResult =
-  | { ok: true; tokensAdded: number; totalTokensEst: number }
-  | {
-      ok: false;
-      kind:
-        | 'session_full'
-        | 'session_gone'
-        | 'model_mismatch'
-        | 'prompt_too_long'
-        | 'capacity'
-        | 'other';
-      status: number;
-    };
+function tearDownConversation(conversationId: string, sessionId: string): void {
+  conversationRegistry.delete(conversationId);
+  sessionTracker.sessionEnd(sessionId);
+}
 
-/**
- * Attempt prefill on a worker for either a new ("create") or existing
- * ("continue") session, returning a structured result so the caller can
- * distinguish retryable failures from ones requiring a conversation reset.
- */
-async function tryPrefill(
-  worker: Worker,
-  sessionId: string,
+async function tryCompactionRecovery(
+  conversationId: string,
   body: InferRequest,
-  mode: 'create' | 'continue'
-): Promise<PrefillResult> {
-  try {
-    const prefillRes = await fetch(`${worker.url}/worker/prefill`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: sessionId,
-        prompt: body.prompt,
-        model: body.model,
-        max_tokens: body.max_tokens,
-        mode,
-      }),
-    });
-    if (prefillRes.ok) {
-      const data = (await prefillRes.json()) as {
-        tokens_added?: number;
-        total_tokens_est?: number;
-      };
-      return {
-        ok: true,
-        tokensAdded: data.tokens_added ?? 0,
-        totalTokensEst: data.total_tokens_est ?? 0,
-      };
-    }
-    let reason = 'other';
-    try {
-      const errBody = (await prefillRes.json()) as { reason?: string };
-      if (errBody.reason === 'session_full') reason = 'session_full';
-      else if (errBody.reason === 'session_gone') reason = 'session_gone';
-      else if (errBody.reason === 'model_mismatch') reason = 'model_mismatch';
-      else if (errBody.reason === 'prompt_too_long') reason = 'prompt_too_long';
-    } catch {
-      /* ignore */
-    }
-    if (prefillRes.status === 409 && reason === 'session_full') {
-      return { ok: false, kind: 'session_full', status: 409 };
-    }
-    if (prefillRes.status === 413 || reason === 'prompt_too_long') {
-      return { ok: false, kind: 'prompt_too_long', status: 413 };
-    }
-    if (prefillRes.status === 404 || reason === 'session_gone') {
-      return { ok: false, kind: 'session_gone', status: prefillRes.status };
-    }
-    if (prefillRes.status === 400 && reason === 'model_mismatch') {
-      return { ok: false, kind: 'model_mismatch', status: 400 };
-    }
-    if (prefillRes.status === 503) {
-      return { ok: false, kind: 'capacity', status: 503 };
-    }
-    return { ok: false, kind: 'other', status: prefillRes.status };
-  } catch {
-    return { ok: false, kind: 'other', status: 0 };
+  trigger: CompactionTrigger,
+  oldSessionId?: string
+): Promise<{ worker: Worker; sessionId: string } | null> {
+  if (oldSessionId) {
+    sessionTracker.sessionEnd(oldSessionId);
   }
+  const compactResult = await compact(conversationId, trigger, body.model, {
+    incomingPrompt: body.prompt,
+  });
+  if (!compactResult.ok) return null;
+
+  const entry = conversationRegistry.get(conversationId);
+  if (!entry) return null;
+
+  const worker = healthTable
+    .getWorkersForScheduler()
+    .find((w) => w.id === entry.workerId);
+  if (!worker) return null;
+
+  const prefill = await tryPrefill(worker, entry.sessionId, body, 'continue');
+  if (!prefill.ok) return null;
+
+  conversationRegistry.touch(conversationId, prefill.totalTokensEst);
+  return { worker, sessionId: entry.sessionId };
+}
+
+function transcriptHasCompactableHead(conversationId: string, incomingPrompt: string): boolean {
+  const turns = transcriptStore.get(conversationId);
+  if (turns.length === 0) return false;
+  const last = turns[turns.length - 1];
+  const peeled =
+    last.role === 'user' && last.content === incomingPrompt
+      ? turns.slice(0, -1)
+      : turns;
+  return splitTranscript(peeled).head.length > 0;
 }
 
 function sendReset(res: Response, reason: 'session_full' | 'session_gone', requestId: string): void {
@@ -148,81 +127,138 @@ router.post('/', async (req: Request, res: Response) => {
 
   const release = await conversationRegistry.acquire(body.conversation_id);
   try {
-    const entry = conversationRegistry.get(body.conversation_id);
+    transcriptStore.append(body.conversation_id, {
+      role: 'user',
+      content: body.prompt,
+      ts: Date.now(),
+    });
+
+    let entry = conversationRegistry.get(body.conversation_id);
 
     let selectedWorker: Worker | null = null;
     let sessionId: string;
 
     if (entry) {
-      // Refresh the idle clock the moment we start working this turn (not
-      // just at stream end) so a slow prefill/decode can't be mistaken for
-      // idleness by the periodic sweepExpired() sweep. This is on top of,
-      // not instead of, sweepExpired()'s own lock-aware skip.
       conversationRegistry.touch(body.conversation_id);
-      // Sticky continue: resolve the worker this conversation already lives on.
-      const worker = healthTable
-        .getWorkersForScheduler()
-        .find((w) => w.id === entry!.workerId);
 
-      if (!worker) {
-        conversationRegistry.delete(body.conversation_id);
-        sessionTracker.sessionEnd(entry.sessionId);
-        sendReset(res, 'session_gone', requestId);
-        return;
+      if (
+        shouldCompactProactively(entry.approxTokens) &&
+        !shouldDebounce(body.conversation_id) &&
+        transcriptHasCompactableHead(body.conversation_id, body.prompt)
+      ) {
+        const proactive = await tryCompactionRecovery(
+          body.conversation_id,
+          body,
+          'proactive',
+          entry.sessionId
+        );
+        if (proactive) {
+          selectedWorker = proactive.worker;
+          sessionId = proactive.sessionId;
+          entry = conversationRegistry.get(body.conversation_id)!;
+        }
       }
 
-      const decodeAdmission = decodeTracker.canAccept(worker.id);
-      if (decodeAdmission.canAccept === false) {
-        sendDecodeCapacityReject(res, decodeAdmission.reason, requestId, worker.id);
-        return;
-      }
+      if (!selectedWorker) {
+        let worker = healthTable
+          .getWorkersForScheduler()
+          .find((w) => w.id === entry!.workerId);
 
-      sessionId = entry.sessionId;
-      const result = await tryPrefill(worker, sessionId, body, 'continue');
+        if (!worker) {
+          const recovered = await tryCompactionRecovery(
+            body.conversation_id,
+            body,
+            'session_gone',
+            entry.sessionId
+          );
+          if (recovered) {
+            selectedWorker = recovered.worker;
+            sessionId = recovered.sessionId;
+          } else {
+            tearDownConversation(body.conversation_id, entry.sessionId);
+            sendReset(res, 'session_gone', requestId);
+            return;
+          }
+        } else {
+          const decodeAdmission = decodeTracker.canAccept(worker.id);
+          if (decodeAdmission.canAccept === false) {
+            sendDecodeCapacityReject(res, decodeAdmission.reason, requestId, worker.id);
+            return;
+          }
 
-      if (result.ok === true) {
-        selectedWorker = worker;
-      } else if (result.kind === 'session_full') {
-        conversationRegistry.delete(body.conversation_id);
-        sessionTracker.sessionEnd(sessionId);
-        sendReset(res, 'session_full', requestId);
-        return;
-      } else if (result.kind === 'session_gone') {
-        conversationRegistry.delete(body.conversation_id);
-        sessionTracker.sessionEnd(sessionId);
-        sendReset(res, 'session_gone', requestId);
-        return;
-      } else if (result.kind === 'model_mismatch') {
-        // Registry/worker state disagree about which model this session is
-        // pinned to - treat as a lost session rather than a 502 so the
-        // existing frontend 409-reset handling applies without new UI work.
-        conversationRegistry.delete(body.conversation_id);
-        sessionTracker.sessionEnd(sessionId);
-        sendReset(res, 'session_gone', requestId);
-        return;
-      } else if (result.kind === 'prompt_too_long') {
-        conversationRegistry.delete(body.conversation_id);
-        sessionTracker.sessionEnd(sessionId);
-        res.status(413).json({
-          error: 'Prompt too long',
-          reason: 'prompt_too_long',
-          request_id: requestId,
-        });
-        return;
-      } else {
-        conversationRegistry.delete(body.conversation_id);
-        sessionTracker.sessionEnd(sessionId);
-        res.status(502).json({
-          error: 'Continuation prefill failed',
-          reason: result.kind,
-          request_id: requestId,
-        });
-        return;
+          sessionId = entry.sessionId;
+          const result = await tryPrefill(worker, sessionId, body, 'continue');
+
+          if (result.ok === true) {
+            selectedWorker = worker;
+          } else if (result.kind === 'session_full') {
+            const recovered = await tryCompactionRecovery(
+              body.conversation_id,
+              body,
+              'session_full',
+              sessionId
+            );
+            if (recovered) {
+              selectedWorker = recovered.worker;
+              sessionId = recovered.sessionId;
+            } else {
+              tearDownConversation(body.conversation_id, sessionId);
+              sendReset(res, 'session_full', requestId);
+              return;
+            }
+          } else if (result.kind === 'session_gone') {
+            const recovered = await tryCompactionRecovery(
+              body.conversation_id,
+              body,
+              'session_gone',
+              sessionId
+            );
+            if (recovered) {
+              selectedWorker = recovered.worker;
+              sessionId = recovered.sessionId;
+            } else {
+              tearDownConversation(body.conversation_id, sessionId);
+              sendReset(res, 'session_gone', requestId);
+              return;
+            }
+          } else if (result.kind === 'model_mismatch') {
+            tearDownConversation(body.conversation_id, sessionId);
+            sendReset(res, 'session_gone', requestId);
+            return;
+          } else if (result.kind === 'prompt_too_long') {
+            tearDownConversation(body.conversation_id, sessionId);
+            res.status(413).json({
+              error: 'Prompt too long',
+              reason: 'prompt_too_long',
+              request_id: requestId,
+            });
+            return;
+          } else {
+            tearDownConversation(body.conversation_id, sessionId);
+            res.status(502).json({
+              error: 'Continuation prefill failed',
+              reason: result.kind,
+              request_id: requestId,
+            });
+            return;
+          }
+        }
       }
     } else {
       // New conversation: admission control + worker selection retry loop.
-      const allWorkers = healthTable.getWorkersForScheduler();
-      const admissionCheck = canAcceptRequest(allWorkers, estimatedKvBytes);
+      let allWorkers = healthTable.getWorkersForScheduler();
+      let admissionCheck = canAcceptRequest(allWorkers, estimatedKvBytes);
+
+      if (!admissionCheck.canAccept) {
+        const rejection = admissionCheck as { canAccept: false; reason: string };
+        if (rejection.reason === 'system_kv_cache_full') {
+          for (const candidate of pickSessionsToCompact(SYSTEM_KV_COMPACT_BATCH)) {
+            await compact(candidate.conversationId, 'system_kv_pressure', candidate.model);
+          }
+          allWorkers = healthTable.getWorkersForScheduler();
+          admissionCheck = canAcceptRequest(allWorkers, estimatedKvBytes);
+        }
+      }
 
       if (!admissionCheck.canAccept) {
         const rejection = admissionCheck as { canAccept: false; reason: string };
@@ -335,8 +371,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
 
       if (!decodeRes.ok || !decodeRes.body) {
-        conversationRegistry.delete(body.conversation_id);
-        sessionTracker.sessionEnd(sessionId);
+        tearDownConversation(body.conversation_id, sessionId);
         if (!res.writableEnded) {
           res.write(`data: ${JSON.stringify({ error: 'Worker decode failed' })}\n\n`);
           res.end();
@@ -351,8 +386,7 @@ router.post('/', async (req: Request, res: Response) => {
       // Stream tokens from worker to client with bounded buffer and write deadlines
       await streamTokensToClient(body.conversation_id, sessionId, decodeRes.body, res);
     } catch (err) {
-      conversationRegistry.delete(body.conversation_id);
-      sessionTracker.sessionEnd(sessionId);
+      tearDownConversation(body.conversation_id, sessionId);
       if (decodeStarted) {
         decodeTracker.decodeEnd(sessionId);
         streamMetrics.sessionEnd(sessionId, 'worker_error');
@@ -441,6 +475,7 @@ async function streamTokensToClient(
   const decoder = new TextDecoder();
 
   const buffer: TokenMessage[] = [];
+  const assistantParts: string[] = [];
   let expectedSeq = 0;
   let clientDisconnected = false;
   let terminationReason: 'complete' | 'client_disconnect' | 'write_timeout' =
@@ -499,6 +534,7 @@ async function streamTokensToClient(
         );
 
         if (success) {
+          assistantParts.push(token.token);
           streamMetrics.tokenWritten(sessionId, latencyMs);
         } else {
           console.warn(
@@ -522,6 +558,13 @@ async function streamTokensToClient(
     // conversation + worker session alive for the next turn; only
     // sessionTracker teardown paths (session_full, session_gone, decode
     // hard failure) end the underlying worker session.
+    if (assistantParts.length > 0) {
+      transcriptStore.append(conversationId, {
+        role: 'assistant',
+        content: assistantParts.join(''),
+        ts: Date.now(),
+      });
+    }
     conversationRegistry.touch(conversationId);
     decodeTracker.decodeEnd(sessionId);
     streamMetrics.sessionEnd(sessionId, terminationReason);
