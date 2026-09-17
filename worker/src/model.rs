@@ -8,6 +8,7 @@ use llama_cpp::{
 };
 use tracing::info;
 
+use crate::budget;
 use crate::stream::{EmitError, TokenEmitter};
 
 /// Thread count for llama.cpp sessions.
@@ -27,6 +28,11 @@ fn default_session_params() -> SessionParams {
     let threads = inference_threads();
     params.n_threads = threads;
     params.n_threads_batch = threads;
+    // Match coordinator/worker token budget so long prefills are not truncated by llama.cpp defaults (512).
+    let ctx = budget::MAX_CONTEXT_TOKENS;
+    params.n_ctx = ctx;
+    params.n_batch = ctx;
+    params.n_ubatch = ctx;
     params
 }
 
@@ -222,5 +228,7 @@ mod tests {
         let params = default_session_params();
         assert!(params.n_threads >= 1);
         assert!(params.n_threads_batch >= 1);
+        assert_eq!(params.n_ctx, budget::MAX_CONTEXT_TOKENS);
+        assert_eq!(params.n_batch, budget::MAX_CONTEXT_TOKENS);
     }
 }
