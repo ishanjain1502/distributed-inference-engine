@@ -1,0 +1,202 @@
+{
+    "timestamp": "2026-08-15T12:56:47.780440+00:00",
+    "mode": "bench",
+    "config": {
+      "mode": "bench",
+      "base_url": "http://localhost:1337",
+      "model": "tinyllama-1.1b",
+      "prompt": "Write one short sentence about the ocean.",
+      "prompt_file": null,
+      "max_tokens": 50,
+      "timeout_s": 120.0,
+      "out": "results/baseline.json",
+      "fail_on": null,
+      "concurrency": 4,
+      "requests": 20,
+      "max_concurrency": 32,
+      "step": 4,
+      "requests_per_step": 16,
+      "stop_reject_rate": 0.5
+    },
+    "summary": {
+      "attempts": 20,
+      "histogram": {
+        "200": 9,
+        "503": 0,
+        "502": 0,
+        "409": 0,
+        "4xx": 0,
+        "other": 0,
+        "client_error": 11
+      },
+      "ttft_p50_ms": 18055.011203001413,
+      "ttft_p95_ms": 24145.852890000242,
+      "mean_tokens_per_s": null,
+      "aggregate_tps": 0.022486770855116738,
+      "error_rate": 0.55,
+      "reject_rate": 0.0
+    },
+    "levels": [],
+    "requests": [
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120099.64218799905,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120099.53075500016,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120099.41763899951,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120099.32243799994,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120109.52474900114,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120108.94507299963,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120108.7951770005,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120108.37121399891,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 21299.583521000386,
+        "tokens": 1,
+        "duration_ms": 21300.222768999447,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 24145.852890000242,
+        "tokens": 1,
+        "duration_ms": 24146.46789500148,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 15798.219565998807,
+        "tokens": 1,
+        "duration_ms": 15798.800343998664,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 23566.239971998584,
+        "tokens": 1,
+        "duration_ms": 23566.86572199942,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 18055.011203001413,
+        "tokens": 1,
+        "duration_ms": 18055.61950900119,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 18720.86468499947,
+        "tokens": 1,
+        "duration_ms": 18721.495691999735,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 11411.440885000047,
+        "tokens": 1,
+        "duration_ms": 11412.333361000492,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 15735.171816999355,
+        "tokens": 1,
+        "duration_ms": 15735.757169999488,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 200,
+        "ttft_ms": 12295.438627999829,
+        "tokens": 1,
+        "duration_ms": 12296.43247400054,
+        "error": null,
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120100.49383399928,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120006.0086909998,
+        "error": "timeout",
+        "rejected": false
+      },
+      {
+        "status": 0,
+        "ttft_ms": null,
+        "tokens": 0,
+        "duration_ms": 120003.22579400017,
+        "error": "timeout",
+        "rejected": false
+      }
+    ]
+}

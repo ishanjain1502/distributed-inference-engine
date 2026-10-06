@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { healthTable, WorkerStatus } from './healthTable';
 import { getCapacityConfig, getSystemCapacityMetrics } from './capacity';
+import { decodeTracker } from './decodeTracker';
 
 const FANOUT_TIMEOUT_MS = 500;
 
@@ -59,6 +60,7 @@ const router = Router();
 router.get('/', async (_req: Request, res: Response) => {
   const capacity = getSystemCapacityMetrics();
   const config = getCapacityConfig();
+  const decodeSummary = decodeTracker.getSummary();
   const counts = healthTable.getCounts();
   const workers = healthTable.getAllWorkers();
 
@@ -106,6 +108,12 @@ router.get('/', async (_req: Request, res: Response) => {
       max_total_kv_cache_bytes: config.maxTotalKvCacheBytes,
       session_capacity_pct: capacity.sessionCapacityPct,
       kv_cache_capacity_pct: capacity.kvCacheCapacityPct,
+      in_flight_decodes: decodeSummary.total,
+      max_in_flight_decodes: decodeSummary.config.maxTotalInFlightDecodes,
+      max_in_flight_decodes_per_worker:
+        decodeSummary.config.maxInFlightDecodesPerWorker,
+      in_flight_decode_capacity_pct: capacity.inFlightDecodeCapacityPct,
+      in_flight_decodes_per_worker: decodeSummary.perWorker,
     },
     workers: enriched,
   });

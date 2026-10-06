@@ -7,6 +7,7 @@ import healthRouter from './health';
 import inferRouter from './infer';
 import statsRouter from './stats';
 import { conversationRegistry } from './conversationRegistry';
+import { startDrainLoop } from './drainLoop';
 
 const app = express();
 const port = process.env.PORT || 1337;
@@ -25,6 +26,8 @@ setInterval(() => {
     );
   }
 }, CONVERSATION_SWEEP_INTERVAL_MS).unref();
+
+startDrainLoop();
 
 const frontendIndex = path.join(__dirname, '../../frontend/index.html');
 const frontendStats = path.join(__dirname, '../../frontend/stats.html');

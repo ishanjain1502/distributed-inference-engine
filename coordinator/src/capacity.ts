@@ -11,6 +11,7 @@
 // Uses pre-computed aggregates from HealthTable (updated on heartbeat)
 // and SessionTracker (updated immediately when sessions end).
 
+import { decodeTracker } from './decodeTracker';
 import { healthTable } from './healthTable';
 import { sessionTracker } from './sessionTracker';
 
@@ -62,6 +63,9 @@ export interface SystemCapacityMetrics {
   // In-flight sessions tracked by coordinator (more up-to-date than heartbeat)
   inFlightSessions: number;
   inFlightKvBytes: number;
+  inFlightDecodes: number;
+  maxInFlightDecodes: number;
+  inFlightDecodeCapacityPct: number;
 }
 
 /**
@@ -81,6 +85,8 @@ export function getSystemCapacityMetrics(): SystemCapacityMetrics {
     inFlight.totalEstimatedKvBytes
   );
 
+  const decodeSummary = decodeTracker.getSummary();
+
   return {
     totalSessions,
     totalKvCacheBytes,
@@ -92,6 +98,10 @@ export function getSystemCapacityMetrics(): SystemCapacityMetrics {
       (totalKvCacheBytes / capacityConfig.maxTotalKvCacheBytes) * 100,
     inFlightSessions: inFlight.activeCount,
     inFlightKvBytes: inFlight.totalEstimatedKvBytes,
+    inFlightDecodes: decodeSummary.total,
+    maxInFlightDecodes: decodeSummary.config.maxTotalInFlightDecodes,
+    inFlightDecodeCapacityPct:
+      (decodeSummary.total / decodeSummary.config.maxTotalInFlightDecodes) * 100,
   };
 }
 
@@ -103,7 +113,9 @@ export type RejectionReason =
   | 'no_workers'
   | 'system_sessions_full'
   | 'system_kv_cache_full'
-  | 'all_workers_at_capacity';
+  | 'system_in_flight_decode_full'
+  | 'all_workers_at_capacity'
+  | 'all_workers_decode_busy';
 
 export interface AdmissionDecision {
   canAccept: boolean;
@@ -180,6 +192,9 @@ export function emitCapacityMetricsLog(): void {
       alive_workers: metrics.aliveWorkers,
       session_capacity_pct: metrics.sessionCapacityPct.toFixed(1),
       kv_cache_capacity_pct: metrics.kvCacheCapacityPct.toFixed(1),
+      in_flight_decodes: metrics.inFlightDecodes,
+      max_in_flight_decodes: metrics.maxInFlightDecodes,
+      in_flight_decode_capacity_pct: metrics.inFlightDecodeCapacityPct.toFixed(1),
     })
   );
 }

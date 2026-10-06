@@ -1,4 +1,5 @@
 import { sessionTracker } from './sessionTracker';
+import { transcriptStore } from './transcriptStore';
 
 export const CONVERSATION_IDLE_TTL_MS = 300_000;
 
@@ -47,14 +48,19 @@ export class ConversationRegistry {
    */
   sweepExpired(now: number = Date.now()): ConversationEntry[] {
     const expired: ConversationEntry[] = [];
+    const expiredIds: string[] = [];
     for (const [id, entry] of this.entries) {
       if (this.isExpired(entry, now) && !this.hasTail(id)) {
         expired.push(entry);
+        expiredIds.push(id);
         this.entries.delete(id);
       }
     }
     for (const entry of expired) {
       sessionTracker.sessionEnd(entry.sessionId);
+    }
+    for (const id of expiredIds) {
+      transcriptStore.delete(id);
     }
     return expired;
   }
@@ -74,6 +80,37 @@ export class ConversationRegistry {
 
   delete(conversationId: string): void {
     this.entries.delete(conversationId);
+    transcriptStore.delete(conversationId);
+  }
+
+  entriesOnWorker(
+    workerId: string
+  ): Array<{ conversationId: string; entry: ConversationEntry }> {
+    const result: Array<{ conversationId: string; entry: ConversationEntry }> = [];
+    for (const [conversationId, entry] of this.entries) {
+      if (entry.workerId === workerId) {
+        result.push({ conversationId, entry: { ...entry } });
+      }
+    }
+    return result;
+  }
+
+  entriesForCompaction(): Array<{
+    conversationId: string;
+    approxTokens: number;
+    model: string;
+  }> {
+    const result: Array<{ conversationId: string; approxTokens: number; model: string }> = [];
+    for (const [conversationId, entry] of this.entries) {
+      if (!this.hasTail(conversationId)) {
+        result.push({
+          conversationId,
+          approxTokens: entry.approxTokens,
+          model: entry.model,
+        });
+      }
+    }
+    return result;
   }
 
   clear(): void {

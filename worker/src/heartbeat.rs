@@ -19,6 +19,7 @@ struct WorkerHealth {
     alive: bool,
     active_sessions: usize,
     kv_cache_bytes: u64,
+    draining: bool,
 }
 
 pub struct HeartbeatConfig {
@@ -46,10 +47,15 @@ async fn gather_health(sessions: &Sessions) -> WorkerHealth {
     let active_sessions = sessions_read.len();
     let kv_cache_bytes: u64 = sessions_read.values().map(|s| s.kv_cache_bytes).sum();
 
+    let draining = std::env::var("WORKER_DRAINING")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
     WorkerHealth {
         alive: true,
         active_sessions,
         kv_cache_bytes,
+        draining,
     }
 }
 
